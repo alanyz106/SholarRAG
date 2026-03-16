@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from functools import lru_cache
@@ -20,10 +22,16 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5433/nexusrag")
 
-    # LLM Provider: "gemini" | "ollama"
+    # LLM Provider: "gemini" | "openai" | "ollama"
     LLM_PROVIDER: str = Field(default="gemini")
 
-    # Google AI
+    # OpenAI-compatible (OpenAI, OpenRouter, LocalAI, vLLM, etc.)
+    OPENAI_API_KEY: str = Field(default="")
+    OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1")
+    OPENAI_ORGANIZATION: Optional[str] = Field(default=None)
+    OPENAI_MODEL: str = Field(default="gpt-4o")
+
+    # Google AI (deprecated - migrating to OpenAI)
     GOOGLE_AI_API_KEY: str = Field(default="")
 
     # Ollama
@@ -46,6 +54,10 @@ class Settings(BaseSettings):
     KG_EMBEDDING_PROVIDER: str = Field(default="gemini")
     KG_EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
     KG_EMBEDDING_DIMENSION: int = Field(default=3072)
+
+    # OpenAI-compatible embedding (when KG_EMBEDDING_PROVIDER=openai)
+    OPENAI_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
+    OPENAI_EMBEDDING_DIMENSION: int = Field(default=1536)
 
     # ChromaDB
     CHROMA_HOST: str = Field(default="localhost")

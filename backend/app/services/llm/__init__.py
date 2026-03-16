@@ -35,6 +35,18 @@ def get_llm_provider() -> LLMProvider:
             thinking_level=settings.LLM_THINKING_LEVEL,
         )
 
+    if provider == "openai":
+        from app.services.llm.openai import OpenAILLMProvider
+
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+        return OpenAILLMProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL,
+            base_url=settings.OPENAI_BASE_URL,
+            organization=settings.OPENAI_ORGANIZATION,
+        )
+
     if provider == "ollama":
         from app.services.llm.ollama import OllamaLLMProvider
 
@@ -43,7 +55,7 @@ def get_llm_provider() -> LLMProvider:
             model=settings.OLLAMA_MODEL,
         )
 
-    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Supported: gemini, ollama")
+    raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Supported: gemini, openai, ollama")
 
 
 @lru_cache
@@ -63,6 +75,18 @@ def get_embedding_provider() -> EmbeddingProvider:
             model=settings.KG_EMBEDDING_MODEL,
         )
 
+    if provider == "openai":
+        from app.services.llm.openai import OpenAIEmbeddingProvider
+
+        if not settings.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is required when KG_EMBEDDING_PROVIDER=openai")
+        return OpenAIEmbeddingProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_EMBEDDING_MODEL,
+            base_url=settings.OPENAI_BASE_URL,
+            organization=settings.OPENAI_ORGANIZATION,
+        )
+
     if provider == "ollama":
         from app.services.llm.ollama import OllamaEmbeddingProvider
 
@@ -80,7 +104,7 @@ def get_embedding_provider() -> EmbeddingProvider:
 
     raise ValueError(
         f"Unknown KG_EMBEDDING_PROVIDER: {provider!r}. "
-        "Supported: gemini, ollama, sentence_transformers"
+        "Supported: gemini, openai, ollama, sentence_transformers"
     )
 
 

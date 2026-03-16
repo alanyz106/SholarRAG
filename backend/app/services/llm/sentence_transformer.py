@@ -35,7 +35,7 @@ _KNOWN_DIMS: dict[str, int] = {
 class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
     """Local embedding provider using any sentence-transformers model."""
 
-    _BATCH_SIZE = 64
+    _BATCH_SIZE = 32
 
     def __init__(self, model: str = "BAAI/bge-m3"):
         self._model_name = model

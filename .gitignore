@@ -8,6 +8,7 @@ dist/
 backend/data/docling/
 backend/data/lightrag/
 backend/uploads/
+backend/chroma_data/
 venv/
 .venv/
 *.egg-info/
@@ -16,5 +17,6 @@ screenlog/
 nexusrag.db
 showcase/*
 CLAUDE.md
-
+backend/*.log
 scripts
+/.claude

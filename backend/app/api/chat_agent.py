@@ -102,6 +102,44 @@ def _get_gemini_tool():
     ])
 
 
+# OpenAI-compatible function calling
+def _get_openai_tool():
+    """Create OpenAI-compatible tool definition."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_documents",
+                "description": (
+                    "Search the knowledge base for relevant document sections. "
+                    "Use this tool when the user asks about document content, data, or facts. "
+                    "IMPORTANT: Rewrite the user's question as a detailed, specific search query "
+                    "to get better retrieval results. "
+                    "Do NOT use this tool for greetings, chitchat, or non-document questions."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "A rewritten, detailed search query based on the user's question. "
+                                "Examples: 'revenue?' → 'total revenue figures and financial performance metrics'. "
+                                "'AI là gì?' → 'định nghĩa trí tuệ nhân tạo, lịch sử và ứng dụng'"
+                            ),
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of relevant chunks to retrieve (default: 5, max: 10)",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        }
+    ]
+
+
 
 # ---------------------------------------------------------------------------
 # Ollama prompt-based tool calling — MANDATORY search before answering
@@ -408,6 +446,7 @@ async def agent_chat_stream(
     provider = get_llm_provider()
     provider_name = settings.LLM_PROVIDER.lower()
     is_gemini = provider_name == "gemini"
+    is_openai = provider_name == "openai"
 
     existing_ids: set[str] = set()
     all_sources: list[ChatSourceChunk] = []
@@ -480,6 +519,10 @@ async def agent_chat_stream(
         tools = [_get_gemini_tool()]
         # Reinforce tool-calling obligation in system prompt for Gemini
         effective_system_prompt = system_prompt + GEMINI_TOOL_SYSTEM
+    elif is_openai:
+        tools = _get_openai_tool()
+        # OpenAI: use same tool reinforcement as Gemini (both support native function calling)
+        effective_system_prompt = system_prompt + GEMINI_TOOL_SYSTEM
     else:
         # Ollama: append mandatory tool prompt to system prompt
         effective_system_prompt = system_prompt + "\n\n" + OLLAMA_TOOL_SYSTEM
@@ -506,7 +549,7 @@ async def agent_chat_stream(
             max_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
             system_prompt=effective_system_prompt,
             think=enable_thinking,
-            tools=tools if is_gemini else None,
+            tools=tools if (is_gemini or is_openai) else None,
         ):
             if chunk.type == "thinking":
                 thinking_text += chunk.text

@@ -33,6 +33,8 @@ def get_chroma_client() -> chromadb.HttpClient:
                 anonymized_telemetry=False,
             )
         )
+        # Fix for chromadb 0.4.22: set Content-Type header for JSON requests
+        _chroma_client._server._session.headers.update({"Content-Type": "application/json"})
         # Test connection
         _chroma_client.heartbeat()
         logger.info("Connected to ChromaDB successfully")
