@@ -14,8 +14,7 @@ venv/
 .DS_Store
 screenlog/
 nexusrag.db
-showcase/demo_nexus_video.mkv
+showcase/*
 CLAUDE.md
-showcase/demo_nexus_video.mp4
 
 scripts
