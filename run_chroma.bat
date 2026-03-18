@@ -1,0 +1,1 @@
+chroma run --host localhost --port 8002 --path backend/chroma_data

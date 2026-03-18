@@ -17,6 +17,7 @@ screenlog/
 nexusrag.db
 showcase/*
 CLAUDE.md
-backend/*.log
+*.log
+*.md
 scripts
 /.claude

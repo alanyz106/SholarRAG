@@ -83,12 +83,53 @@ class Settings(BaseSettings):
     NEXUSRAG_MAX_IMAGES_PER_DOC: int = 50
     NEXUSRAG_ENABLE_FORMULA_ENRICHMENT: bool = True
 
+    # ChromaDB Embedding Provider (for vector search)
+    # Options: "sentence_transformers" (local), "openai", "gemini", "ollama"
+    CHROMA_EMBEDDING_PROVIDER: str = Field(default="sentence_transformers")
+
+    # OpenAI-compatible embedding for ChromaDB (when CHROMA_EMBEDDING_PROVIDER=openai)
+    CHROMA_OPENAI_MODEL: str = Field(default="text-embedding-3-small")
+    CHROMA_OPENAI_DIMENSION: int = Field(default=1536)
+    # Reuses OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_ORGANIZATION
+
+    # Google AI embedding for ChromaDB (when CHROMA_EMBEDDING_PROVIDER=gemini)
+    CHROMA_GEMINI_MODEL: str = Field(default="gemini-embedding-001")
+    CHROMA_GEMINI_DIMENSION: int = Field(default=3072)
+    # Reuses GOOGLE_AI_API_KEY
+
+    # Ollama embedding for ChromaDB (when CHROMA_EMBEDDING_PROVIDER=ollama)
+    CHROMA_OLLAMA_MODEL: str = Field(default="nomic-embed-text")
+    CHROMA_OLLAMA_DIMENSION: int = Field(default=768)
+    # Reuses OLLAMA_HOST
+
     # NexusRAG Retrieval Quality
     NEXUSRAG_EMBEDDING_MODEL: str = "BAAI/bge-m3"
     NEXUSRAG_RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
     NEXUSRAG_VECTOR_PREFETCH: int = 20
     NEXUSRAG_RERANKER_TOP_K: int = 8
     NEXUSRAG_MIN_RELEVANCE_SCORE: float = 0.15
+
+    # Reranker Provider (for cross-encoder reranking)
+    # Options: "sentence_transformers" (local), "cohere" (Cohere API),
+    #          "jina" (Jina AI API), "modelscope" (ModelScope OpenAI-compatible)
+    RERANKER_PROVIDER: str = Field(default="sentence_transformers")
+
+    # Cohere Rerank API (when RERANKER_PROVIDER=cohere)
+    COHERE_API_KEY: str = Field(default="")
+    COHERE_RERANK_MODEL: str = Field(default="rerank-english-v3.0")
+    COHERE_RERANK_TOP_N: int = Field(default=10)
+
+    # Jina AI Rerank API (when RERANKER_PROVIDER=jina)
+    JINA_API_KEY: str = Field(default="")
+    JINA_RERANK_MODEL: str = Field(default="jina-reranker-v2-base-multilingual")
+    JINA_RERANK_TOP_N: int = Field(default=10)
+
+    # ModelScope Rerank API (when RERANKER_PROVIDER=modelscope)
+    # ModelScope uses OpenAI-compatible client, but rerank endpoint similar to Cohere
+    MODELSCOPE_API_KEY: str = Field(default="")
+    MODELSCOPE_BASE_URL: str = Field(default="https://ms-ens-6f01371a-0c58.api-inference.modelscope.cn/v1")
+    MODELSCOPE_RERANK_MODEL: str = Field(default="BAAI/bge-reranker-v2-m3")
+    MODELSCOPE_RERANK_TOP_N: int = Field(default=10)
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5174", "http://localhost:3000"]

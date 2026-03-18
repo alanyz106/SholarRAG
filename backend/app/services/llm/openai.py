@@ -217,6 +217,15 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             "text-embedding-3-large": 3072,
             "text-embedding-ada-002": 1536,
         }
+        # Immediately set dimension from known mappings if model matches
+        if model in self._known_dimensions:
+            self._dimension = self._known_dimensions[model]
+        else:
+            # Try substring match
+            for name, dim in self._known_dimensions.items():
+                if name in model:
+                    self._dimension = dim
+                    break
 
     def _get_dimension(self) -> int:
         """Get embedding dimension for the model."""
@@ -237,7 +246,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 input=texts,
             )
             embeddings = [item.embedding for item in response.data]
-            return np.array(embeddings, dtype=np.float32)
+            arr = np.array(embeddings, dtype=np.float32)
+            # Auto-detect dimension from first successful call
+            if self._dimension is None and arr.size > 0:
+                self._dimension = arr.shape[1]
+                logger.info(f"Detected embedding dimension: {self._dimension}")
+            return arr
         except Exception as e:
             logger.error(f"OpenAI embedding failed: {e}")
             dim = self._get_dimension()
@@ -250,7 +264,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 input=texts,
             )
             embeddings = [item.embedding for item in response.data]
-            return np.array(embeddings, dtype=np.float32)
+            arr = np.array(embeddings, dtype=np.float32)
+            # Auto-detect dimension from first successful call
+            if self._dimension is None and arr.size > 0:
+                self._dimension = arr.shape[1]
+                logger.info(f"Detected embedding dimension: {self._dimension}")
+            return arr
         except Exception as e:
             logger.error(f"OpenAI async embedding failed: {e}")
             dim = self._get_dimension()

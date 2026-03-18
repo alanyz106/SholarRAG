@@ -112,11 +112,11 @@ docker run -d \
    ```
 2. 启动 ChromaDB 服务器：
    ```bash
-   chroma run --host localhost --port 8002 --path chroma_data
+   chroma run --host localhost --port 8002 --path backend/chroma_data
    ```
    保持这个终端窗口运行
 
-**方式 B：Docker**
+**方式 B：Docker(可选)**
 ```bash
 docker run -d \
   --name nexusrag-chromadb \
@@ -186,9 +186,6 @@ pip install --upgrade pip
 pip install -r backend/requirements.txt
 ```
 
-⚠️ **注意**：首次安装会下载约 2.5GB 的机器学习模型（sentence-transformers），可能需要几分钟到几十分钟，取决于网络速度。如果失败，重试或使用镜像源。
-
----
 
 ## 3. 环境配置
 
@@ -281,7 +278,7 @@ python backend/scripts/download_models.py
 
 ---
 
-### 终端 1：PostgreSQL 服务
+### 终端 1：PostgreSQL 服务（已经默认启动)
 
 **如果作为 Windows 服务安装**（默认）：
 
@@ -309,7 +306,7 @@ docker start nexusrag-postgres  # 或 docker run（首次）
 venv\Scripts\activate
 
 # 启动 ChromaDB 服务器
-chroma run --host localhost --port 8002 --path chroma_data
+chroma run --host localhost --port 8002 --path backend/chroma_data
 ```
 
 ✅ 应该看到输出：`ChromaDB running in HTTP mode`，保持运行。
