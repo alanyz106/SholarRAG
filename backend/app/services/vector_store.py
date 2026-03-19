@@ -60,9 +60,31 @@ class VectorStore:
         """Get or create the collection."""
         if self._collection is None:
             client = get_chroma_client()
+
+            # Get expected embedding dimension from the configured embedding provider
+            # This avoids ChromaDB's DefaultEmbeddingFunction which downloads all-MiniLM-L6-v2
+            from app.services.embedder import get_embedding_service
+            try:
+                embedder = get_embedding_service()
+                expected_dim = embedder.dimension
+            except Exception:
+                # Fallback if embedding service not available yet
+                expected_dim = 1536  # default for OpenAI text-embedding-3-small
+
+            class DummyEmbeddingFunction:
+                """Dummy embedding function that returns zero vectors of correct dimension."""
+                def __init__(self, dim: int):
+                    self.dim = dim
+                def __call__(self, input: list[str]) -> list[list[float]]:
+                    # Return zero vectors - never actually used since we provide embeddings
+                    return [[0.0] * self.dim for _ in range(len(input))]
+
+            dummy_emb_func = DummyEmbeddingFunction(expected_dim)
+
             self._collection = client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"hnsw:space": "cosine"},
+                embedding_function=dummy_emb_func,
             )
         return self._collection
 

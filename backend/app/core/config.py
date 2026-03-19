@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     NEXUSRAG_DOCLING_IMAGES_SCALE: float = 2.0
     NEXUSRAG_MAX_IMAGES_PER_DOC: int = 50
     NEXUSRAG_ENABLE_FORMULA_ENRICHMENT: bool = True
+    # Docling accelerator: "auto" (detect), "cpu", "cuda", "mps", "xpu"
+    NEXUSRAG_DOCLING_DEVICE: str = "cpu"  # Default to CPU for stability on weak GPUs
+    NEXUSRAG_DOCLING_NUM_THREADS: int = 8
 
     # ChromaDB Embedding Provider (for vector search)
     # Options: "sentence_transformers" (local), "openai", "gemini", "ollama"
@@ -111,7 +114,8 @@ class Settings(BaseSettings):
 
     # Reranker Provider (for cross-encoder reranking)
     # Options: "sentence_transformers" (local), "cohere" (Cohere API),
-    #          "jina" (Jina AI API), "modelscope" (ModelScope OpenAI-compatible)
+    #          "jina" (Jina AI API), "modelscope" (ModelScope OpenAI-compatible),
+    #          "gitee_ai" (Gitee AI API - sentence similarity)
     RERANKER_PROVIDER: str = Field(default="sentence_transformers")
 
     # Cohere Rerank API (when RERANKER_PROVIDER=cohere)
@@ -130,6 +134,11 @@ class Settings(BaseSettings):
     MODELSCOPE_BASE_URL: str = Field(default="https://ms-ens-6f01371a-0c58.api-inference.modelscope.cn/v1")
     MODELSCOPE_RERANK_MODEL: str = Field(default="BAAI/bge-reranker-v2-m3")
     MODELSCOPE_RERANK_TOP_N: int = Field(default=10)
+
+    # Gitee AI Rerank API (when RERANKER_PROVIDER=gitee_ai)
+    GITEE_AI_API_TOKEN: str = Field(default="")
+    GITEE_AI_RERANK_MODEL: str = Field(default="bge-reranker-v2-m3")
+    GITEE_AI_RERANK_TOP_N: int = Field(default=10)
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5174", "http://localhost:3000"]

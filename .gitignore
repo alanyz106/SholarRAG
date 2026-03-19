@@ -9,7 +9,6 @@ backend/data/docling/
 backend/data/lightrag/
 backend/uploads/
 backend/chroma_data/
-venv/
 .venv/
 *.egg-info/
 .DS_Store
@@ -21,3 +20,4 @@ CLAUDE.md
 *.md
 scripts
 /.claude
+backend/tests/

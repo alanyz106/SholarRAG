@@ -206,6 +206,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             base_url=base_url,
             organization=organization,
         )
+        self._async_client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            organization=organization,
+        )
         self._model = model
         self._dimension: Optional[int] = None
         # Common dimensions:

@@ -56,8 +56,14 @@ class DeepDocumentParser:
 
         from docling.document_converter import DocumentConverter, PdfFormatOption
         from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.datamodel.accelerator_options import AcceleratorOptions
 
         pipeline_options = PdfPipelineOptions()
+        # Performance optimization: Use CPU with more threads for better throughput on weak GPUs
+        pipeline_options.accelerator_options = AcceleratorOptions(
+            device=settings.NEXUSRAG_DOCLING_DEVICE,
+            num_threads=settings.NEXUSRAG_DOCLING_NUM_THREADS,
+        )
         pipeline_options.generate_picture_images = settings.NEXUSRAG_ENABLE_IMAGE_EXTRACTION
         pipeline_options.images_scale = settings.NEXUSRAG_DOCLING_IMAGES_SCALE
         pipeline_options.do_formula_enrichment = settings.NEXUSRAG_ENABLE_FORMULA_ENRICHMENT
@@ -182,7 +188,7 @@ class DeepDocumentParser:
         the embedding, making image/table content semantically searchable.
         """
         from docling_core.transforms.chunker import HybridChunker
-
+        
         chunker = HybridChunker(
             max_tokens=settings.NEXUSRAG_CHUNK_MAX_TOKENS,
             merge_peers=True,

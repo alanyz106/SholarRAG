@@ -3,8 +3,11 @@ Reranker Service
 ================
 Cross-encoder reranker for improving retrieval precision.
 
-Default model: BAAI/bge-reranker-v2-m3 (multilingual, 100+ languages).
-Configurable via NEXUSRAG_RERANKER_MODEL in settings.
+Supports multiple providers:
+- sentence_transformers (local)
+- gitee_ai (Gitee AI API)
+
+Default provider: RERANKER_PROVIDER from settings (default: sentence_transformers).
 
 Usage:
     reranker = get_reranker_service()
@@ -13,8 +16,9 @@ Usage:
 from __future__ import annotations
 
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Optional, Sequence, List, Dict, Any
 
 from app.core.config import settings
 
@@ -29,12 +33,23 @@ class RerankResult:
     text: str           # The chunk text
 
 
-class RerankerService:
-    """
-    Cross-encoder reranker service.
-    Scores (query, document) pairs jointly through a transformer,
-    producing far more accurate relevance scores than bi-encoder cosine similarity.
-    """
+class BaseRerankerProvider(ABC):
+    """Abstract base class for reranker providers."""
+
+    @abstractmethod
+    def rerank(
+        self,
+        query: str,
+        documents: Sequence[str],
+        top_k: Optional[int] = None,
+        min_score: Optional[float] = None,
+    ) -> List[RerankResult]:
+        """Rerank documents by relevance to the query."""
+        ...
+
+
+class SentenceTransformerRerankerProvider(BaseRerankerProvider):
+    """Local sentence-transformers cross-encoder reranker."""
 
     def __init__(self, model_name: Optional[str] = None):
         self.model_name = model_name or settings.NEXUSRAG_RERANKER_MODEL
@@ -56,20 +71,8 @@ class RerankerService:
         documents: Sequence[str],
         top_k: Optional[int] = None,
         min_score: Optional[float] = None,
-    ) -> list[RerankResult]:
-        """
-        Rerank documents by relevance to the query.
-
-        Args:
-            query: The user's search query
-            documents: List of document texts to rerank
-            top_k: Maximum number of results to return (None = all)
-            min_score: Minimum relevance score threshold (None = no filtering)
-
-        Returns:
-            List of RerankResult sorted by score (descending),
-            filtered by top_k and min_score.
-        """
+    ) -> List[RerankResult]:
+        """Rerank documents using local cross-encoder model."""
         if not documents:
             return []
 
@@ -85,7 +88,7 @@ class RerankerService:
             for i, (s, doc) in enumerate(zip(scores, documents))
         ]
 
-        # Sort by score descending (most relevant first)
+        # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)
 
         # Apply min_score filter
@@ -97,6 +100,216 @@ class RerankerService:
             results = results[:top_k]
 
         return results
+
+
+class GiteeAIRerankerProvider(BaseRerankerProvider):
+    """Gitee AI sentence similarity API reranker."""
+
+    API_URL = "https://ai.gitee.com/v1/sentence-similarity"
+
+    def __init__(
+        self,
+        api_token: Optional[str] = None,
+        model: Optional[str] = None,
+        top_n: Optional[int] = None,
+    ):
+        """
+        Initialize Gitee AI reranker provider.
+
+        Args:
+            api_token: Gitee AI API token
+            model: Model name (default: bge-reranker-v2-m3)
+            top_n: Default top N results to return
+        """
+        self.api_token = api_token or settings.GITEE_AI_API_TOKEN
+        self.model = model or settings.GITEE_AI_RERANK_MODEL
+        self.top_n = top_n if top_n is not None else settings.GITEE_AI_RERANK_TOP_N
+
+        if not self.api_token:
+            raise ValueError(
+                "GITEE_AI_API_TOKEN is required. Set it in .env file or pass it explicitly."
+            )
+
+    def _call_api(
+        self,
+        query: str,
+        sentences: Sequence[str],
+        model: Optional[str] = None,
+    ) -> list[float]:
+        """
+        Call Gitee AI sentence similarity API.
+
+        Args:
+            query: The source/query sentence
+            sentences: List of candidate sentences to score
+            model: Model name (uses default if not specified)
+
+        Returns:
+            List of relevance scores for each sentence
+
+        Raises:
+            RuntimeError: If API call fails
+        """
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Failover-Enabled": "true"
+        }
+
+        payload = {
+            "inputs": {
+                "source_sentence": query,
+                "sentences": list(sentences)
+            },
+            "model": model or self.model
+        }
+
+        try:
+            response = requests.post(
+                self.API_URL,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code != 200:
+                error_msg = f"Gitee AI API error: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            result = response.json()
+
+            # API returns a list of scores
+            if not isinstance(result, list):
+                raise RuntimeError(f"Unexpected response format: {result}")
+
+            return result
+
+        except requests.RequestException as e:
+            error_msg = f"Failed to call Gitee AI API: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+    def rerank(
+        self,
+        query: str,
+        documents: Sequence[str],
+        top_k: Optional[int] = None,
+        min_score: Optional[float] = None,
+    ) -> List[RerankResult]:
+        """
+        Rerank documents using Gitee AI API.
+
+        Args:
+            query: The user's search query
+            documents: List of document texts to rerank
+            top_k: Maximum number of results to return (None = use default top_n)
+            min_score: Minimum relevance score threshold (None = no filtering)
+
+        Returns:
+            List of RerankResult sorted by score (descending).
+        """
+        if not documents:
+            return []
+
+        # Call API to get scores
+        scores = self._call_api(query, documents)
+
+        # Build results
+        results = [
+            RerankResult(index=i, score=s, text=doc)
+            for i, (s, doc) in enumerate(zip(scores, documents))
+        ]
+
+        # Sort by score descending
+        results.sort(key=lambda r: r.score, reverse=True)
+
+        # Apply min_score filter
+        if min_score is not None:
+            results = [r for r in results if r.score >= min_score]
+
+        # Apply top_k limit
+        if top_k is not None:
+            results = results[:top_k]
+        elif self.top_n is not None:
+            results = results[:self.top_n]
+
+        return results
+
+
+class RerankerService:
+    """
+    Facade service that delegates to the configured provider.
+    Supports multiple reranker providers through a common interface.
+    """
+
+    def __init__(
+        self,
+        provider: Optional[str] = None,
+        model_name: Optional[str] = None,
+        **kwargs
+    ):
+        """
+        Initialize reranker service with specified provider.
+
+        Args:
+            provider: Reranker provider (sentence_transformers, gitee_ai, etc.)
+                     Defaults to settings.RERANKER_PROVIDER
+            model_name: Model name (provider-specific)
+            **kwargs: Additional provider-specific arguments (api_token, top_n, etc.)
+        """
+        self.provider = provider or settings.RERANKER_PROVIDER
+
+        if self.provider == "sentence_transformers":
+            self._provider = SentenceTransformerRerankerProvider(
+                model_name=model_name or settings.NEXUSRAG_RERANKER_MODEL
+            )
+        elif self.provider == "gitee_ai":
+            self._provider = GiteeAIRerankerProvider(
+                api_token=kwargs.get("api_token") or settings.GITEE_AI_API_TOKEN,
+                model=model_name or settings.GITEE_AI_RERANK_MODEL,
+                top_n=kwargs.get("top_n", settings.GITEE_AI_RERANK_TOP_N)
+            )
+        else:
+            raise ValueError(
+                f"Unknown RERANKER_PROVIDER: {self.provider!r}. "
+                f"Supported: sentence_transformers, gitee_ai, cohere, jina, modelscope"
+            )
+
+    @property
+    def model(self):
+        """Get the underlying model (only for sentence_transformers)."""
+        if self.provider == "sentence_transformers":
+            return self._provider.model
+        raise AttributeError(f"model property not available for provider={self.provider}")
+
+    def rerank(
+        self,
+        query: str,
+        documents: Sequence[str],
+        top_k: Optional[int] = None,
+        min_score: Optional[float] = None,
+    ) -> List[RerankResult]:
+        """
+        Rerank documents by relevance to the query.
+
+        Args:
+            query: The user's search query
+            documents: List of document texts to rerank
+            top_k: Maximum number of results to return (None = all)
+            min_score: Minimum relevance score threshold (None = no filtering)
+
+        Returns:
+            List of RerankResult sorted by score (descending),
+            filtered by top_k and min_score.
+        """
+        return self._provider.rerank(
+            query=query,
+            documents=documents,
+            top_k=top_k,
+            min_score=min_score,
+        )
 
 
 # Singleton instance
