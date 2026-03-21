@@ -15,7 +15,9 @@ async def get_config_status():
 
     if llm_provider == "ollama":
         llm_model = settings.OLLAMA_MODEL
-    else:
+    elif llm_provider == "openai":
+        llm_model = settings.OPENAI_MODEL
+    else:  # gemini
         llm_model = settings.LLM_MODEL_FAST
 
     kg_provider = settings.KG_EMBEDDING_PROVIDER.lower()

@@ -18,7 +18,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Set
 
 import numpy as np
 
@@ -393,6 +393,23 @@ class KnowledgeGraphService:
             "is_truncated": kg.is_truncated if hasattr(kg, "is_truncated") else False,
         }
 
+    def _simple_tokenize(self, question: str) -> Set[str]:
+        """
+        Fallback tokenization: simple split + lowercase + filter.
+
+        Used when entity extraction fails or is disabled.
+
+        Returns:
+            Set of keyword strings (lowercased, punctuation stripped)
+        """
+        raw_tokens = question.lower().split()
+        keywords = set()
+        for token in raw_tokens:
+            cleaned = token.strip(".,?!:;\"'()[]{}").lower()
+            if len(cleaned) >= 2:
+                keywords.add(cleaned)
+        return keywords
+
     async def get_relevant_context(
         self,
         question: str,
@@ -400,14 +417,16 @@ class KnowledgeGraphService:
         max_relationships: int = 30,
     ) -> str:
         """
-        Build RAG context from raw KG data (no LLM generation).
+        Build RAG context from raw KG data using embedding-based entity search.
 
-        Instead of calling LightRAG's aquery() which uses LLM to generate
-        a narrative (and can hallucinate), this method:
-          1. Tokenizes the question into keywords
-          2. Finds entities whose names match any keyword
-          3. Gets relationships connecting those entities
-          4. Formats everything as structured factual text
+        Scheme B: Instead of keyword matching, directly search entities_vdb
+        with query embedding to find semantically relevant entities.
+
+        Steps:
+          1. Compute query embedding using configured embedding provider
+          2. Search entities_vdb for top-k most similar entities
+          3. Get relationships connecting those entities
+          4. Format everything as structured factual text
 
         Returns:
             Structured string of entities + relationships, or "" if nothing found.
@@ -425,68 +444,64 @@ class KnowledgeGraphService:
         if not all_nodes:
             return ""
 
-        # -- 1. Extract keywords from question --
-        # Simple but effective: split, lowercase, filter short words
-        raw_tokens = question.lower().split()
-        # Also handle hyphenated/versioned tokens like "deepseek-v3.2"
-        keywords = set()
-        for token in raw_tokens:
-            # Remove punctuation at edges
-            cleaned = token.strip(".,?!:;\"'()[]{}").lower()
-            if len(cleaned) >= 2:
-                keywords.add(cleaned)
+        # -- 1. Compute query embedding --
+        try:
+            emb_provider = get_embedding_provider()
+            query_embedding = await emb_provider.embed([question])
+            query_embedding = query_embedding[0]  # Extract first (and only) vector
+        except Exception as e:
+            logger.error(f"Failed to compute query embedding for workspace {self.workspace_id}: {e}")
+            # Fallback to simple tokenization if embedding fails
+            return await self._get_relevant_context_by_keywords(question, max_entities, max_relationships, all_nodes, all_edges)
 
-        if not keywords:
+        # -- 2. Search entities_vdb for similar entities --
+        entities_vdb = rag.entities_vdb
+        try:
+            search_results = await entities_vdb.query(
+                query=question,
+                top_k=max_entities,
+                query_embedding=query_embedding
+            )
+        except Exception as e:
+            logger.error(f"Failed to query entities_vdb for workspace {self.workspace_id}: {e}")
+            return await self._get_relevant_context_by_keywords(question, max_entities, max_relationships, all_nodes, all_edges)
+
+        if not search_results:
+            logger.info(f"No entities found via embedding search for workspace {self.workspace_id}")
             return ""
 
-        # -- 2. Find matching entities --
-        matched_entity_names: set[str] = set()
-        entity_info: dict[str, dict] = {}  # name → {type, description}
+        # -- 3. Build matched entity info from search results --
+        matched_entity_names: list[str] = []
+        entity_info: dict[str, dict] = {}
 
-        for node in all_nodes:
-            node_id = node.get("id", "")
-            node_lower = node_id.lower()
+        # LightRAG entities_vdb stores content as "entity_name\ndescription"
+        for result in search_results:
+            content = result.get("content", "")
+            entity_name = result.get("entity_name", "")
 
-            # Check if any keyword is a substring of entity name OR vice versa
-            matched = False
-            for kw in keywords:
-                if kw in node_lower or node_lower in kw:
-                    matched = True
-                    break
-                # Also check multi-word keywords (e.g., "deepseek" matches "DEEPSEEK-V3.2")
-                for part in node_lower.split("-"):
-                    if kw in part or part in kw:
-                        matched = True
-                        break
-                if matched:
-                    break
+            # Parse content to get name and description
+            if content and "\n" in content:
+                parts = content.split("\n", 1)
+                name = parts[0]
+                description = parts[1] if len(parts) > 1 else ""
+            elif entity_name:
+                name = entity_name
+                description = result.get("description", "")
+            else:
+                continue
 
-            if matched:
-                matched_entity_names.add(node_id)
-                entity_info[node_id] = {
-                    "entity_type": node.get("entity_type", "Unknown"),
-                    "description": node.get("description", ""),
-                }
-
-        if not matched_entity_names and len(all_nodes) <= 50:
-            # Small graph: include top entities by default
-            for node in all_nodes[:10]:
-                nid = node.get("id", "")
-                matched_entity_names.add(nid)
-                entity_info[nid] = {
-                    "entity_type": node.get("entity_type", "Unknown"),
-                    "description": node.get("description", ""),
-                }
+            matched_entity_names.append(name)
+            entity_info[name] = {
+                "entity_type": result.get("entity_type", "Unknown"),
+                "description": description,
+            }
 
         if not matched_entity_names:
             return ""
 
-        # Limit entities
-        matched_list = list(matched_entity_names)[:max_entities]
-
-        # -- 3. Find relationships involving matched entities --
+        # -- 4. Find relationships involving matched entities --
         relevant_rels: list[dict] = []
-        matched_lower = {n.lower() for n in matched_list}
+        matched_lower = {n.lower() for n in matched_entity_names}
 
         for edge in all_edges:
             src = edge.get("source", "")
@@ -500,7 +515,6 @@ class KnowledgeGraphService:
                 })
                 # Also add connected entities we might have missed
                 if src not in entity_info:
-                    # Find node info
                     for n in all_nodes:
                         if n.get("id", "") == src:
                             entity_info[src] = {
@@ -520,13 +534,13 @@ class KnowledgeGraphService:
             if len(relevant_rels) >= max_relationships:
                 break
 
-        # -- 4. Format as structured text --
+        # -- 5. Format as structured text --
         parts: list[str] = []
 
         # Entities section
-        if matched_list:
+        if matched_entity_names:
             parts.append("Entities found in documents:")
-            for name in matched_list:
+            for name in matched_entity_names[:max_entities]:
                 info = entity_info.get(name, {})
                 etype = info.get("entity_type", "")
                 desc = info.get("description", "")
@@ -554,7 +568,132 @@ class KnowledgeGraphService:
 
         result = "\n".join(parts)
         logger.info(
-            f"KG raw context: {len(matched_list)} entities, "
+            f"KG raw context (embedding search): {len(matched_entity_names)} entities, "
+            f"{len(relevant_rels)} relationships for workspace {self.workspace_id}"
+        )
+        return result
+
+    async def _get_relevant_context_by_keywords(
+        self,
+        question: str,
+        max_entities: int,
+        max_relationships: int,
+        all_nodes: list[dict],
+        all_edges: list[dict],
+    ) -> str:
+        """
+        Fallback: original keyword-based matching method.
+        Used when embedding search fails or is not available.
+        """
+        keywords = self._simple_tokenize(question)
+        if not keywords:
+            return ""
+
+        matched_entity_names: set[str] = set()
+        entity_info: dict[str, dict] = {}
+
+        for node in all_nodes:
+            node_id = node.get("id", "")
+            node_lower = node_id.lower()
+
+            matched = False
+            for kw in keywords:
+                if kw in node_lower or node_lower in kw:
+                    matched = True
+                    break
+                for part in node_lower.split("-"):
+                    if kw in part or part in kw:
+                        matched = True
+                        break
+                if matched:
+                    break
+
+            if matched:
+                matched_entity_names.add(node_id)
+                entity_info[node_id] = {
+                    "entity_type": node.get("entity_type", "Unknown"),
+                    "description": node.get("description", ""),
+                }
+
+        if not matched_entity_names and len(all_nodes) <= 50:
+            # Small graph: include top entities by default
+            for node in all_nodes[:10]:
+                nid = node.get("id", "")
+                matched_entity_names.add(nid)
+                entity_info[nid] = {
+                    "entity_type": node.get("entity_type", "Unknown"),
+                    "description": node.get("description", ""),
+                }
+
+        if not matched_entity_names:
+            return ""
+
+        matched_list = list(matched_entity_names)[:max_entities]
+
+        # Find relationships
+        relevant_rels: list[dict] = []
+        matched_lower = {n.lower() for n in matched_list}
+
+        for edge in all_edges:
+            src = edge.get("source", "")
+            tgt = edge.get("target", "")
+            if src.lower() in matched_lower or tgt.lower() in matched_lower:
+                relevant_rels.append({
+                    "source": src,
+                    "target": tgt,
+                    "description": edge.get("description", ""),
+                    "keywords": edge.get("keywords", ""),
+                })
+                if src not in entity_info:
+                    for n in all_nodes:
+                        if n.get("id", "") == src:
+                            entity_info[src] = {
+                                "entity_type": n.get("entity_type", "Unknown"),
+                                "description": n.get("description", ""),
+                            }
+                            break
+                if tgt not in entity_info:
+                    for n in all_nodes:
+                        if n.get("id", "") == tgt:
+                            entity_info[tgt] = {
+                                "entity_type": n.get("entity_type", "Unknown"),
+                                "description": n.get("description", ""),
+                            }
+                            break
+            if len(relevant_rels) >= max_relationships:
+                break
+
+        # Format
+        parts: list[str] = []
+        if matched_list:
+            parts.append("Entities found in documents:")
+            for name in matched_list:
+                info = entity_info.get(name, {})
+                etype = info.get("entity_type", "")
+                desc = info.get("description", "")
+                if len(desc) > 200:
+                    desc = desc[:200] + "..."
+                type_str = f" [{etype}]" if etype and etype != "Unknown" else ""
+                if desc:
+                    parts.append(f"- {name}{type_str}: {desc}")
+                else:
+                    parts.append(f"- {name}{type_str}")
+
+        if relevant_rels:
+            parts.append("")
+            parts.append("Relationships:")
+            for rel in relevant_rels:
+                desc = rel["description"]
+                if len(desc) > 150:
+                    desc = desc[:150] + "..."
+                if desc:
+                    parts.append(f"- {rel['source']} → {rel['target']}: {desc}")
+                else:
+                    parts.append(f"- {rel['source']} → {rel['target']}")
+
+        result = "\n".join(parts)
+        logger.info(
+            f"KG raw context (keyword fallback): {len(matched_list)} entities, "
             f"{len(relevant_rels)} relationships for workspace {self.workspace_id}"
         )
         return result

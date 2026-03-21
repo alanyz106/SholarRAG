@@ -54,11 +54,15 @@ class EmbeddingService:
         elif self.provider == "openai":
             from app.services.llm.openai import OpenAIEmbeddingProvider
             self.model_name = model_name or settings.CHROMA_OPENAI_MODEL
+            # Use independent ChromaDB config if set, otherwise fall back to shared config
+            api_key = settings.CHROMA_OPENAI_API_KEY or settings.OPENAI_API_KEY
+            base_url = settings.CHROMA_OPENAI_BASE_URL or settings.OPENAI_BASE_URL
+            organization = settings.CHROMA_OPENAI_ORGANIZATION or settings.OPENAI_ORGANIZATION
             self._external_provider = OpenAIEmbeddingProvider(
-                api_key=settings.OPENAI_API_KEY,
+                api_key=api_key,
                 model=self.model_name,
-                base_url=settings.OPENAI_BASE_URL,
-                organization=settings.OPENAI_ORGANIZATION,
+                base_url=base_url,
+                organization=organization,
             )
         elif self.provider == "gemini":
             from app.services.llm.gemini import GeminiEmbeddingProvider

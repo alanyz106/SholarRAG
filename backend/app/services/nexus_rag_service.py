@@ -10,6 +10,7 @@ Backward-compatible: exposes the same `process_document()`, `query()`,
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Optional
@@ -27,6 +28,9 @@ from app.services.vector_store import VectorStore, get_vector_store
 from app.services.reranker import get_reranker_service
 from app.services.rag_service import RAGQueryResult, RetrievedChunk
 from app.services.models.parsed_document import DeepRetrievalResult
+
+# Upload directory for document files (same as in documents.py)
+UPLOAD_DIR = settings.BASE_DIR / "uploads"
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +332,78 @@ class NexusRAGService:
             if img_path.exists():
                 img_path.unlink()
 
+        # If KG is enabled, we need to rebuild the entire KG for this workspace
+        # because LightRAG doesn't support deleting specific document's entities/relations
+        if self.kg_service:
+            try:
+                logger.info(
+                    f"Document {document_id} deleted. KG data cannot be selectively removed. "
+                    f"Rebuilding KG for workspace {self.workspace_id} from remaining documents..."
+                )
+                # Trigger KG rebuild in background (non-blocking)
+                asyncio.create_task(self._rebuild_knowledge_graph())
+            except Exception as e:
+                logger.error(f"Failed to schedule KG rebuild for workspace {self.workspace_id}: {e}")
+
         logger.info(f"Deleted document {document_id} from NexusRAG stores")
+
+    async def _rebuild_knowledge_graph(self) -> None:
+        """
+        Rebuild the knowledge graph from all indexed documents in this workspace.
+        Used after document deletion to maintain KG consistency.
+        """
+        if not self.kg_service:
+            return
+
+        try:
+            # Get all indexed documents for this workspace
+            result = await self.db.execute(
+                select(Document)
+                .where(
+                    Document.workspace_id == self.workspace_id,
+                    Document.status == DocumentStatus.INDEXED
+                )
+            )
+            documents = result.scalars().all()
+
+            logger.info(
+                f"Rebuilding KG for workspace {self.workspace_id} from {len(documents)} documents..."
+            )
+
+            # Clear existing KG data
+            self.kg_service.delete_project_data()
+
+            # Re-ingest all documents
+            for doc in documents:
+                try:
+                    # Get the file path
+                    file_path = UPLOAD_DIR / doc.filename
+                    if not file_path.exists():
+                        logger.warning(
+                            f"Document {doc.id} file not found during KG rebuild: {file_path}"
+                        )
+                        continue
+
+                    # Re-parse the document to get markdown
+                    parsed = self.parser.parse(
+                        file_path=str(file_path),
+                        document_id=doc.id,
+                        original_filename=doc.original_filename,
+                    )
+
+                    # Ingest into KG
+                    if parsed.markdown:
+                        await self.kg_service.ingest(parsed.markdown)
+                        logger.debug(f"Re-ingested document {doc.id} into KG")
+                except Exception as e:
+                    logger.error(f"Failed to re-ingest document {doc.id} during KG rebuild: {e}")
+
+            logger.info(
+                f"KG rebuild completed for workspace {self.workspace_id} "
+                f"from {len(documents)} documents"
+            )
+        except Exception as e:
+            logger.error(f"KG rebuild failed for workspace {self.workspace_id}: {e}")
 
     def get_chunk_count(self) -> int:
         """Return total number of chunks in the knowledge base's vector store."""

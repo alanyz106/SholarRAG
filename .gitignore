@@ -21,3 +21,5 @@ CLAUDE.md
 scripts
 /.claude
 backend/tests/
+demo/
+tutorial/

@@ -1,6 +1,19 @@
 """
 NexusRAG — standalone Knowledge Base + RAG application.
 """
+import os
+import logging
+
+# ============================================
+# CRITICAL: Set HuggingFace offline mode BEFORE any other imports
+# This prevents HuggingFace from trying to download models at import time
+# ============================================
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["HF_HUB_CACHE"] = "D:/huggingface_data/hub"
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,15 +21,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-import logging
 
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine, Base
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager

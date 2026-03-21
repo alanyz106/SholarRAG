@@ -78,13 +78,20 @@ def get_embedding_provider() -> EmbeddingProvider:
     if provider == "openai":
         from app.services.llm.openai import OpenAIEmbeddingProvider
 
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OPENAI_API_KEY is required when KG_EMBEDDING_PROVIDER=openai")
+        # Use KG-specific config if set, otherwise fall back to global OPENAI_* config
+        api_key = settings.KG_OPENAI_API_KEY or settings.OPENAI_API_KEY
+        base_url = settings.KG_OPENAI_BASE_URL or settings.OPENAI_BASE_URL
+        organization = settings.KG_OPENAI_ORGANIZATION or settings.OPENAI_ORGANIZATION
+
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY or KG_OPENAI_API_KEY is required when KG_EMBEDDING_PROVIDER=openai"
+            )
         return OpenAIEmbeddingProvider(
-            api_key=settings.OPENAI_API_KEY,
+            api_key=api_key,
             model=settings.OPENAI_EMBEDDING_MODEL,
-            base_url=settings.OPENAI_BASE_URL,
-            organization=settings.OPENAI_ORGANIZATION,
+            base_url=base_url,
+            organization=organization,
         )
 
     if provider == "ollama":

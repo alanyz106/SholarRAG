@@ -10,6 +10,16 @@ Fallback: TXT, MD (via legacy loader)
 """
 from __future__ import annotations
 
+import os  # MUST be imported before any huggingface related imports
+
+# =====================================================
+# CRITICAL: Set HuggingFace offline mode BEFORE any imports
+# This must be at module level to prevent huggingface_hub
+# from trying to download models when HybridChunker is imported
+# =====================================================
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["HF_HUB_CACHE"] = "D:/huggingface_data/hub"
+
 import logging
 import re
 import time
@@ -143,6 +153,9 @@ class DeepDocumentParser:
 
         # Export to markdown (with page break markers if supported)
         markdown = self._export_markdown(doc)
+
+        # Fix formula alignment issues (Docling outputs & without aligned environment)
+        markdown = self._fix_formula_alignment(markdown)
 
         # Post-process: replace image placeholders with real markdown images
         markdown = self._inject_image_references(markdown, pic_url_list)
@@ -336,6 +349,41 @@ class DeepDocumentParser:
         except TypeError:
             # Fallback for Docling versions without page_break_placeholder
             return doc.export_to_markdown()
+
+    def _fix_formula_alignment(self, markdown: str) -> str:
+        """Fix Docling formula alignment: wrap &-aligned formulas in aligned environment.
+
+        Docling sometimes outputs multi-line formulas with & for alignment:
+            $$ E = & \sum ... \\ p = & \text{...} $$
+
+        KaTeX requires these to be in an aligned environment:
+            $$\begin{aligned} E &= \sum ... \\ p &= \text{...} \end{aligned}$$
+
+        Also handles HTML entity encoding (e.g., &amp; → &).
+
+        Args:
+            markdown: Raw markdown from Docling
+
+        Returns:
+            Fixed markdown with aligned environments
+        """
+        import re
+        import html
+
+        def wrap_formula(match: re.Match) -> str:
+            formula = match.group(1).strip()
+            # Unescape HTML entities first (e.g., &amp; → &)
+            formula = html.unescape(formula)
+
+            # Only fix if formula contains & alignment AND line breaks
+            if '&' in formula and ('\\\\' in formula):
+                # Avoid double-wrapping
+                if not (formula.startswith('\\begin') and formula.endswith('\\end')):
+                    return f'$$\n\\begin{{aligned}}\n{formula}\n\\end{{aligned}}\n$$'
+            return f'$${formula}$$'
+
+        # Match all $$...$$ blocks (DOTALL for multiline)
+        return re.sub(r'\$\$(.*?)\$\$', wrap_formula, markdown, flags=re.DOTALL)
 
     def _extract_images_with_urls(
         self,

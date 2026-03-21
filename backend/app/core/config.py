@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     OPENAI_EMBEDDING_MODEL: str = Field(default="text-embedding-3-small")
     OPENAI_EMBEDDING_DIMENSION: int = Field(default=1536)
 
+    # Independent OpenAI config for KG embeddings (when KG_EMBEDDING_PROVIDER=openai)
+    # If not set, falls back to OPENAI_* configs
+    KG_OPENAI_API_KEY: str = Field(default="")
+    KG_OPENAI_BASE_URL: str = Field(default="")
+    KG_OPENAI_ORGANIZATION: Optional[str] = Field(default=None)
+
     # ChromaDB
     CHROMA_HOST: str = Field(default="localhost")
     CHROMA_PORT: int = Field(default=8002)
@@ -90,10 +96,16 @@ class Settings(BaseSettings):
     # Options: "sentence_transformers" (local), "openai", "gemini", "ollama"
     CHROMA_EMBEDDING_PROVIDER: str = Field(default="sentence_transformers")
 
+    # Independent OpenAI config for ChromaDB embeddings (when CHROMA_EMBEDDING_PROVIDER=openai)
+    # If not set, falls back to OPENAI_* configs
+    CHROMA_OPENAI_API_KEY: str = Field(default="")
+    CHROMA_OPENAI_BASE_URL: str = Field(default="")
+    CHROMA_OPENAI_ORGANIZATION: Optional[str] = Field(default=None)
+
     # OpenAI-compatible embedding for ChromaDB (when CHROMA_EMBEDDING_PROVIDER=openai)
     CHROMA_OPENAI_MODEL: str = Field(default="text-embedding-3-small")
     CHROMA_OPENAI_DIMENSION: int = Field(default=1536)
-    # Reuses OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_ORGANIZATION
+    # Reuses OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_ORGANIZATION by default
 
     # Google AI embedding for ChromaDB (when CHROMA_EMBEDDING_PROVIDER=gemini)
     CHROMA_GEMINI_MODEL: str = Field(default="gemini-embedding-001")

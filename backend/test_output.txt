@@ -1,0 +1,85 @@
+INFO: [] Loaded graph from D:\llm_rag\NexusRAG\backend\data\lightrag\kb_7\graph_chunk_entity_relation.graphml with 244 nodes, 115 edges
+INFO:nano-vectordb:Load (244, 1536) data
+INFO:nano-vectordb:Init {'embedding_dim': 1536, 'metric': 'cosine', 'storage_file': 'D:\\llm_rag\\NexusRAG\\backend\\data\\lightrag\\kb_7\\vdb_entities.json'} 244 data
+INFO:nano-vectordb:Load (115, 1536) data
+INFO:nano-vectordb:Init {'embedding_dim': 1536, 'metric': 'cosine', 'storage_file': 'D:\\llm_rag\\NexusRAG\\backend\\data\\lightrag\\kb_7\\vdb_relationships.json'} 115 data
+INFO:nano-vectordb:Load (12, 1536) data
+INFO:nano-vectordb:Init {'embedding_dim': 1536, 'metric': 'cosine', 'storage_file': 'D:\\llm_rag\\NexusRAG\\backend\\data\\lightrag\\kb_7\\vdb_chunks.json'} 12 data
+INFO: [] Process 7080 KV load full_docs with 1 records
+INFO: [] Process 7080 KV load text_chunks with 12 records
+INFO: [] Process 7080 KV load full_entities with 1 records
+INFO: [] Process 7080 KV load full_relations with 1 records
+INFO: [] Process 7080 KV load entity_chunks with 244 records
+INFO: [] Process 7080 KV load relation_chunks with 115 records
+INFO: [] Process 7080 KV load llm_response_cache with 24 records
+INFO: [] Process 7080 doc status load doc_status with 1 records
+Traceback (most recent call last):
+  File "D:\llm_rag\NexusRAG\backend\test_entity_search.py", line 258, in main
+    await tester.compare_search(test_queries)
+  File "D:\llm_rag\NexusRAG\backend\test_entity_search.py", line 231, in compare_search
+    print(f"  B only: {names_b - names_a or 'none'}")
+UnicodeEncodeError: 'gbk' codec can't encode character '\u0142' in position 48: illegal multibyte sequence
+INFO: Successfully finalized 12 storages
+正在初始化 LightRAG...
+[OK] LightRAG initialized
+  Working dir: D:\llm_rag\NexusRAG\backend\data\lightrag\kb_7
+  Embedding dim: 1536
+
+================================================================================
+Starting comparison test
+================================================================================
+
+================================================================================
+Query: What is MoE-Mamba?
+================================================================================
+
+[Scheme A] Current string matching:
+  提取的关键词: {'is', 'moe-mamba', 'what'}
+  Matched 10 entities:
+    1. Ambellouis [person]
+       Ambellouis is an author involved in the research on future appearance-motion pre...
+    2. Inverse Discrete Cosine Transform [technology]
+       Inverse Discrete Cosine Transform是一种用于运动预测的技术，涉及特征的逆变换。...
+    3. ST-MoE [technology]
+       ST-MoE是一个集成了时空Mamba和动态专家路由的框架，用于多人的运动预测，解决了效率与准确性的权衡问题。<SEP>ST-MoE是一种模型，能够自适应地捕捉...
+    4. Temporal Consistency Loss [technology]
+       Temporal Consistency Loss是一种用于减轻预测运动中的时间抖动的损失函数。...
+    5. Mamba [technology]
+       Mamba是一种具有线性复杂度的高效建模机制，用于替代传统的高成本时空注意力机制。<SEP>Mamba是一种选择性扫描机制，能够动态过滤无关输入，同时保持线性推...
+    6. MoE [technology]
+       专家混合(MoE)是一种通过选择性激活相关专家来实现自适应处理的技术，显著降低计算成本。...
+    7. Davis, A. [person]
+       Davis, A. 是一位研究人员，参与了稀疏门控混合专家层的研究。...
+    8. MoE-Mamba [technology]
+       MoE-Mamba结合了混合专家(MoE)和Mamba，以扩展状态空间模型(SSMs)，在保持计算优势的同时匹配Transformer的性能。...
+    9. Discrete Cosine Transform [technology]
+       Discrete Cosine Transform is a mathematical transformation used in signal proces...
+    10. Qwen1.5-moe [UNKNOWN]
+       Team, Q. 参与了Qwen1.5-moe项目的研究。...
+
+[Scheme B] Embedding vector search:
+  Matched 20 entities:
+    1. MoE-Mamba [Unknown] (similarity: 0.6729)
+       MoE-Mamba结合了混合专家(MoE)和Mamba，以扩展状态空间模型(SSMs)，在保持计算优势的同时匹配Transformer的性能。...
+    2. ST-MoE [Unknown] (similarity: 0.5418)
+       ST-MoE是一个集成了时空Mamba和动态专家路由的框架，用于多人的运动预测，解决了效率与准确性的权衡问题。<SEP>ST-MoE是一种模型，能够自适应地捕捉...
+    3. Bi-TMamba [Unknown] (similarity: 0.5377)
+       Bi-TMamba refers to the bidirectional temporal Mamba used for extracting tempora...
+    4. Bi-SMamba [Unknown] (similarity: 0.5373)
+       Bi-SMamba refers to the bidirectional spatial Mamba used for extracting spatial ...
+    5. Mixture of Spatiotemporal Mamba Experts [Unknown] (similarity: 0.5270)
+       Mixture of Spatiotemporal Mamba Experts is a proposed method to enhance spatiote...
+    6. E output [Unknown] (similarity: 0.5083)
+       E output represents the final output after processing the input features through...
+    7. Mamba [Unknown] (similarity: 0.5042)
+       Mamba是一种具有线性复杂度的高效建模机制，用于替代传统的高成本时空注意力机制。<SEP>Mamba是一种选择性扫描机制，能够动态过滤无关输入，同时保持线性推...
+    8. Bidirectional Spatiotemporal Mamba [Unknown] (similarity: 0.4909)
+       Bidirectional Spatiotemporal Mamba is a method that incorporates both temporal a...
+    9. Mamba Expert Pool [Unknown] (similarity: 0.4866)
+       Mamba Expert Pool is a component that processes input features and selects exper...
+    10. Ludziejewski, J. [Unknown] (similarity: 0.4854)
+       Ludziejewski, J. 是一位研究人员，参与了Moe-mamba项目的研究。...
+
+[Comparison]
+  A only: {'Temporal Consistency Loss', 'Qwen1.5-moe', 'Davis, A.', 'Discrete Cosine Transform', 'Ambellouis', 'Inverse Discrete Cosine Transform', 'MoE'}
+[ERROR] Test failed: 'gbk' codec can't encode character '\u0142' in position 48: illegal multibyte sequence
