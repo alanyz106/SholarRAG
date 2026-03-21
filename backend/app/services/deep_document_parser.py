@@ -572,18 +572,18 @@ class DeepDocumentParser:
         return tables
 
     _TABLE_CAPTION_PROMPT = (
-        "You are a document analysis assistant. Given a markdown table, "
-        "write a concise description that covers:\n"
-        "- The purpose/topic of the table\n"
-        "- Key column names and what they represent\n"
-        "- Notable values, trends, or outliers\n\n"
-        "RULES:\n"
-        "- Write 2-4 sentences, max 500 characters.\n"
-        "- Be factual — describe only what is in the table.\n"
-        "- Write in the SAME LANGUAGE as the table content. "
-        "If the table is in Vietnamese, write in Vietnamese. "
-        "If in English, write in English.\n\n"
-        "Table:\n"
+        "你是文档分析助手。给定一个 markdown 表格，"
+        "撰写简洁描述，涵盖：\n"
+        "- 表格的目的/主题\n"
+        "- 关键列名称及其含义\n"
+        "- 显著的数值、趋势或异常值\n\n"
+        "规则：\n"
+        "- 写2-4句话，最多500个字符。\n"
+        "- 实事求是 —— 仅描述表格中的内容。\n"
+        "- 使用与表格内容相同的语言。"
+        "如果表格是越南语，用越南语写。"
+        "如果是英语，用英语写。\n\n"
+        "表格：\n"
     )
 
     def _caption_tables(self, tables: list[ExtractedTable]) -> None:
@@ -695,18 +695,18 @@ class DeepDocumentParser:
             return
 
         _CAPTION_PROMPT = (
-            "Describe ONLY what you can directly see in this image. "
-            "Do NOT infer, assume, or add any information not visible.\n\n"
-            "Include:\n"
-            "- Type of visual (chart, table, diagram, photo, screenshot, etc.)\n"
-            "- ALL specific numbers, percentages, and labels that are VISIBLE in the image\n"
-            "- Axis labels, legend text, and category names exactly as shown\n"
-            "- Trends or comparisons that are visually obvious\n\n"
-            "RULES:\n"
-            "- Write 2-4 concise sentences, max 400 characters.\n"
-            "- Do NOT start with 'This image shows' or 'Here is'.\n"
-            "- Do NOT add any data, context, or interpretation beyond what is visible.\n"
-            "- If text in the image is not clearly readable, say so."
+            "仅描述你在本图中能直接看到的内容。"
+            "不要推断、假设或添加任何不可见的信息。\n\n"
+            "包括：\n"
+            "- 视觉类型（图表、表格、示意图、照片、截图等）\n"
+            "- 图像中可见的所有具体数字、百分比和标签\n"
+            "- 轴标签、图例文本和类别名称（按原样显示）\n"
+            "- 视觉上明显的趋势或比较\n\n"
+            "规则：\n"
+            "- 写2-4句简洁的话，最多400个字符。\n"
+            "- 不要以'This image shows'或'Here is'开头。\n"
+            "- 不要添加超出可见范围的任何数据、上下文或解释。\n"
+            "- 如果图像中的文本不清楚，请说明。"
         )
 
         for img in images:

@@ -35,18 +35,18 @@ export const StatsBar = memo(function StatsBar({ stats, processingCount = 0 }: S
 
   return (
     <div className="flex items-center gap-4 flex-wrap">
-      <StatItem icon={FileText} label="Documents" value={stats.total_documents} />
-      <StatItem icon={Database} label="Indexed" value={stats.indexed_documents} accent />
-      <StatItem icon={Database} label="Chunks" value={stats.total_chunks} />
+      <StatItem icon={FileText} label="文档" value={stats.total_documents} />
+      <StatItem icon={Database} label="已索引" value={stats.indexed_documents} accent />
+      <StatItem icon={Database} label="片段" value={stats.total_chunks} />
       {(stats.image_count ?? 0) > 0 && (
-        <StatItem icon={Image} label="Images" value={stats.image_count!} />
+        <StatItem icon={Image} label="图片" value={stats.image_count!} />
       )}
 
       {processingCount > 0 && (
         <div className="flex items-center gap-1.5 ml-auto">
           <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
           <span className="text-xs text-amber-400 font-medium">
-            Processing {processingCount} document{processingCount > 1 ? "s" : ""}...
+            正在处理 {processingCount} 个文档...
           </span>
         </div>
       )}

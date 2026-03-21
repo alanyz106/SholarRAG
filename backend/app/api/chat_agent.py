@@ -1,11 +1,11 @@
 """
-Chat Agent — Semi-Agentic SSE Streaming for NexusRAG
+聊天代理 —— NexusRAG 半自主 SSE 流式响应
 ====================================================
 
-Provides an SSE streaming endpoint where the LLM decides whether to call
-``search_documents`` or answer directly, streaming thinking + tokens in real-time.
+提供 SSE 流式端点，LLM 决定是否调用 ``search_documents`` 或直接回答，
+实时流式输出思考过程和令牌。
 
-SSE Event Types:
+SSE 事件类型:
   - status:         {"step": str, "detail": str}
   - thinking:       {"text": str}
   - sources:        {"sources": [...]}
@@ -74,11 +74,11 @@ def _get_gemini_tool():
         types.FunctionDeclaration(
             name="search_documents",
             description=(
-                "Search the knowledge base for relevant document sections. "
-                "Use this tool when the user asks about document content, data, or facts. "
-                "IMPORTANT: Rewrite the user's question as a detailed, specific search query "
-                "to get better retrieval results. "
-                "Do NOT use this tool for greetings, chitchat, or non-document questions."
+                "搜索知识库中相关的文档片段。"
+                "当用户询问文档内容、数据或事实时使用此工具。"
+                "重要：将用户的问题重写为详细、具体的搜索查询"
+                "以获得更好的检索结果。"
+                "不要将此工具用于问候、闲聊或非文档问题。"
             ),
             parameters={
                 "type": "OBJECT",
@@ -86,9 +86,9 @@ def _get_gemini_tool():
                     "query": {
                         "type": "STRING",
                         "description": (
-                            "A rewritten, detailed search query based on the user's question. "
-                            "Examples: 'revenue?' → 'total revenue figures and financial performance metrics'. "
-                            "'AI là gì?' → 'định nghĩa trí tuệ nhân tạo, lịch sử và ứng dụng'"
+                            "基于用户问题重写的详细搜索查询。"
+                            "示例：'revenue?' → '总收入数字和财务绩效指标'。"
+                            "'AI 是什么？' → '人工智能的定义、历史和应用'"
                         ),
                     },
                     "top_k": {
@@ -111,11 +111,11 @@ def _get_openai_tool():
             "function": {
                 "name": "search_documents",
                 "description": (
-                    "Search the knowledge base for relevant document sections. "
-                    "Use this tool when the user asks about document content, data, or facts. "
-                    "IMPORTANT: Rewrite the user's question as a detailed, specific search query "
-                    "to get better retrieval results. "
-                    "Do NOT use this tool for greetings, chitchat, or non-document questions."
+                    "搜索知识库中相关的文档片段。"
+                    "当用户询问文档内容、数据或事实时使用此工具。"
+                    "重要：将用户的问题重写为详细、具体的搜索查询"
+                    "以获得更好的检索结果。"
+                    "不要将此工具用于问候、闲聊或非文档问题。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -123,14 +123,14 @@ def _get_openai_tool():
                         "query": {
                             "type": "string",
                             "description": (
-                                "A rewritten, detailed search query based on the user's question. "
-                                "Examples: 'revenue?' → 'total revenue figures and financial performance metrics'. "
-                                "'AI là gì?' → 'định nghĩa trí tuệ nhân tạo, lịch sử và ứng dụng'"
+                                "基于用户问题重写的详细搜索查询。"
+                                "示例：'revenue?' → '总收入数字和财务绩效指标'。"
+                                "'AI 是什么？' → '人工智能的定义、历史和应用'"
                             ),
                         },
                         "top_k": {
                             "type": "integer",
-                            "description": "Number of relevant chunks to retrieve (default: 5, max: 10)",
+                            "description": "要检索的相关片段数量（默认：5，最大：10）",
                         },
                     },
                     "required": ["query"],
@@ -142,68 +142,65 @@ def _get_openai_tool():
 
 
 # ---------------------------------------------------------------------------
-# Ollama prompt-based tool calling — MANDATORY search before answering
+# Ollama 基于提示词的工具调用 — 回答前必须进行搜索
 # ---------------------------------------------------------------------------
 
 OLLAMA_TOOL_SYSTEM = """\
-## TOOL: search_documents
+## 工具：search_documents
 
-You have ONE tool: search_documents.  You call it by outputting EXACTLY:
+你拥有一个工具：search_documents。你需要通过输出以下内容来调用它：
 
-<tool_call>{"name": "search_documents", "arguments": {"query": "<rewritten query>"}}</tool_call>
+<tool_call>{"name": "search_documents", "arguments": {"query": "<改写后的查询>"}}</tool_call>
 
-### ABSOLUTE RULES (violations are FATAL errors)
+### 绝对规则（违反将导致严重错误）
 
-1. **Except for simple conversational messages, ALWAYS CALL search_documents FIRST.**
-   Simple conversational messages that do NOT require a tool call:
-   - Greetings: "hello", "xin chào", "hi", "hey", "good morning", etc.
-   - Acknowledgements: "cảm ơn", "thank you", "thanks", "ok", "got it", etc.
-   - Farewells: "bye", "goodbye", "tạm biệt", etc.
-   For ALL other messages — questions, requests, factual queries, analysis — you MUST
-   call search_documents before answering. Your knowledge is UNRELIABLE; only document
-   sources are trustworthy. If you are unsure whether a message needs a search, SEARCH.
+1. **除了简单的对话消息外，始终优先调用 search_documents。**
+   不需要工具调用的简单对话消息包括：
+   - 问候语："hello"、"你好"、"hi"、"hey"、"早上好"等。
+   - 确认语："谢谢"、"感谢"、"thanks"、"ok"、"明白了"等。
+   - 告别语："bye"、"goodbye"、"再见"、"拜拜"等。
+   对于所有其他消息 —— 问题、请求、事实查询、分析 —— 你必须在回答前调用 search_documents。你的知识不可靠；只有文档来源才是可信的。如果你不确定某条消息是否需要搜索，请进行搜索。
 
-2. **Your ENTIRE first response to a searchable query must be ONLY the <tool_call> block.**
-   No text before it. No text after it. No explanation. Just the tool call.
+2. **你对可搜索查询的首次完整响应必须仅为 <tool_call> 代码块。**
+   前面不要有任何文字。后面不要有任何文字。不要解释。只需工具调用。
 
-3. **Rewrite the query** to be specific and detailed.
-   "doanh thu" → "doanh thu thuần, tổng doanh thu theo năm, tăng trưởng doanh thu"
-   "AI model" → "AI model architecture, performance benchmarks, training details"
+3. **改写查询**，使其具体且详细。
+   "收入" → "净收入、年度总收入、收入增长"
+   "AI 模型" → "AI 模型架构、性能基准、训练细节"
 
-4. After receiving search results, answer using ONLY those sources with citations.
-   Format: claim text[source_id]. Example: Doanh thu đạt 4.850 tỷ VNĐ[a3x9].
+4. 收到搜索结果后，仅使用这些来源进行回答并添加引用。
+   格式：声明文本[source_id]。示例：收入达到 4850 亿越南盾[a3x9]。
 """
 
 OLLAMA_TOOL_REMINDER = (
-    "\n\n[SYSTEM REMINDER] If this is a question or request, you MUST call search_documents FIRST. "
-    "Output ONLY: <tool_call>{\"name\": \"search_documents\", \"arguments\": {\"query\": \"...\"}}</tool_call> "
-    "Exception: simple greetings, thanks, or farewells do NOT require a tool call — respond directly. "
-    "For everything else, searching is MANDATORY."
+    "\n\n[系统提醒] 如果这是一个问题或请求，你必须首先调用 search_documents。"
+    "仅输出：<tool_call>{\"name\": \"search_documents\", \"arguments\": {\"query\": \"...\"}}</tool_call> "
+    "例外：简单的问候、感谢或告别不需要工具调用 —— 直接回复。"
+    "对于其他所有内容，搜索是强制性的。"
 )
 
 # ---------------------------------------------------------------------------
-# Gemini system prompt reinforcement — enforce tool calling for questions
+# Gemini 系统提示词强化 — 强制要求对问题进行工具调用
 # ---------------------------------------------------------------------------
 
 GEMINI_TOOL_SYSTEM = """\
 
-## Tool Usage (MANDATORY)
+## 工具使用（强制）
 
-You have a tool called `search_documents` that searches the knowledge base.
+你拥有一个名为 `search_documents` 的工具，用于搜索知识库。
 
-### ABSOLUTE RULES:
-1. For ALL user questions, requests, factual queries, or analysis — you MUST call \
-`search_documents` FIRST before answering. Even if the conversation history \
-contains relevant information, you MUST search again to get fresh, accurate sources.
-2. Only skip the tool call for simple conversational messages:
-   - Greetings: "hello", "xin chào", "hi", "hey", etc.
-   - Acknowledgements: "cảm ơn", "thank you", "thanks", "ok", etc.
-   - Farewells: "bye", "goodbye", "tạm biệt", etc.
-3. NEVER answer a question using information from previous turns without searching. \
-Your previous answers may contain outdated or incomplete information.
-4. NEVER reuse citation IDs from previous answers. Each answer must have its own \
-fresh sources from a new search.
-5. Rewrite the user's query to be specific and detailed for better retrieval.
+### 绝对规则：
+1. 对于所有用户问题、请求、事实查询或分析 —— 你必须在回答前首先调用 \
+`search_documents`。即使对话历史中包含相关信息，你也必须再次搜索以获取最新、准确的来源。
+2. 仅对简单的对话消息跳过工具调用：
+   - 问候语："hello"、"你好"、"hi"、"hey"等。
+   - 确认语："谢谢"、"感谢"、"thanks"、"ok"等。
+   - 告别语："bye"、"goodbye"、"再见"、"拜拜"等。
+3. 永远不要在不搜索的情况下使用之前轮次的信息来回答问题。 \
+你之前的回答可能包含过时或不完整的信息。
+4. 永远不要重复使用之前回答中的引用 ID。每个回答必须有自己的 \
+来自新搜索的引用来源。
+5. 将用户的查询改写为具体且详细的，以便更好地检索。
 """
 
 
@@ -418,10 +415,6 @@ async def _execute_search_documents(
     return context, sources, chat_image_refs, image_parts
 
 
-# ---------------------------------------------------------------------------
-# Agent loop — semi-agentic streaming
-# ---------------------------------------------------------------------------
-
 async def agent_chat_stream(
     workspace_id: int,
     message: str,
@@ -431,14 +424,14 @@ async def agent_chat_stream(
     system_prompt: str,
     force_search: bool = False,
 ) -> AsyncGenerator[dict, None]:
-    """Semi-agentic chat loop with streaming.
+    """半智能体聊天流。
 
-    - force_search=True: pre-search before calling LLM, inject sources as context.
-      Guarantees retrieval for every query regardless of model tool-calling ability.
-    - force_search=False (default): agentic tool-calling loop.
-      Gemini uses native function calling; Ollama uses prompt-based tool calling.
+    - force_search=True: 在调用 LLM 之前进行预搜索，将来源作为上下文注入。
+      无论模型是否具备工具调用能力，都能保证每次查询都进行检索。
+    - force_search=False (默认): 智能体工具调用循环。
+      Gemini 使用原生函数调用；Ollama 使用基于提示词的工具调用。
 
-    Yields dicts with 'event' and 'data' keys for SSE formatting.
+    生成包含 'event' 和 'data' 键的字典，用于 SSE 格式化。
     """
     from app.services.llm import get_llm_provider
     from app.core.config import settings
@@ -453,23 +446,23 @@ async def agent_chat_stream(
     all_images: list[ChatImageRef] = []
     all_image_parts: list[dict] = []
 
-    # Build conversation messages
+    # 构建对话消息
     messages: list[LLMMessage] = []
     for msg in history[-10:]:
         role = "user" if msg["role"] == "user" else "assistant"
         messages.append(LLMMessage(role=role, content=msg["content"]))
 
-    # Build user message
+    # 构建用户消息
     messages.append(LLMMessage(role="user", content=message))
 
-    # Tool / prompt setup
+    # 工具 / 提示词设置
     tools = None
     effective_system_prompt = system_prompt
 
     if force_search:
-        # ── Force-search mode: pre-search before LLM call ──────────────────
-        # Retrieve sources immediately, inject as context. No tool calling needed.
-        yield {"event": "status", "data": {"step": "retrieving", "detail": f"Searching: {message[:80]}..."}}
+        # ── 强制搜索模式：在 LLM 调用前进行预搜索 ──────────────────
+        # 立即检索来源，作为上下文注入。不需要工具调用。
+        yield {"event": "status", "data": {"step": "retrieving", "detail": f"正在搜索: {message[:80]}..."}}
 
         context, sources, images, img_parts = await _execute_search_documents(
             workspace_id, message, 8, db, existing_ids,
@@ -485,55 +478,54 @@ async def agent_chat_stream(
 
         if sources:
             tool_result_parts = [
-                "I have retrieved the following document sources for you.\n",
-                "=== DOCUMENT SOURCES ===",
+                "我已为您检索到以下文档来源。\n",
+                "=== 文档来源 ===",
                 context,
-                "=== END SOURCES ===\n",
-                "IMPORTANT:\n"
-                "- Read EVERY source above carefully. Answers often require "
-                "combining data from MULTIPLE sources.\n"
-                "- TABLE DATA: Sources may contain table data as 'Key, Year = Value' pairs. "
-                "Example: 'ROE, 2023 = 12,8%' means ROE was 12.8% in 2023.\n"
-                "- If no source contains relevant information, say: "
-                "\"Tài liệu không chứa thông tin này.\"\n",
+                "=== 来源结束 ===\n",
+                "重要提示:\n"
+                "- 仔细阅读上述每一个来源。答案通常需要结合多个来源的数据。\n"
+                "- 表格数据：来源可能包含表格数据，格式为 '键, 年份 = 值' 对。"
+                "示例：'ROE, 2023 = 12,8%' 表示 2023 年的 ROE 为 12.8%。\n"
+                "- 如果没有来源包含相关信息，请说："
+                "\"文档不包含此信息。\"\n",
             ]
             tool_result_content = "\n".join(tool_result_parts)
 
             user_images_fs: list[LLMImagePart] = []
             if img_parts:
                 for img_data in img_parts:
-                    tool_result_content += f"\n[IMG-{img_data['img_ref_id']}] (page {img_data['page_no']}):"
+                    tool_result_content += f"\n[IMG-{img_data['img_ref_id']}] (第 {img_data['page_no']} 页):"
                     user_images_fs.append(LLMImagePart(
                         data=img_data["inline_data"]["data"],
                         mime_type=img_data["inline_data"]["mime_type"],
                     ))
 
-            tool_result_content += f"\n\nNow answer the question: {message}"
+            tool_result_content += f"\n\n现在回答问题: {message}"
             messages.append(LLMMessage(
                 role="user",
                 content=tool_result_content,
                 images=user_images_fs,
             ))
-        # tools remain None — model answers directly with provided context
+        # tools 保持为 None — 模型直接使用提供的上下文进行回答
     elif is_gemini:
         tools = [_get_gemini_tool()]
-        # Reinforce tool-calling obligation in system prompt for Gemini
+        # 在系统提示词中强化 Gemini 的工具调用义务
         effective_system_prompt = system_prompt + GEMINI_TOOL_SYSTEM
     elif is_openai:
         tools = _get_openai_tool()
-        # OpenAI: use same tool reinforcement as Gemini (both support native function calling)
+        # OpenAI：使用与 Gemini 相同的工具强化（两者都支持原生函数调用）
         effective_system_prompt = system_prompt + GEMINI_TOOL_SYSTEM
     else:
-        # Ollama: append mandatory tool prompt to system prompt
+        # Ollama：将强制工具提示词附加到系统提示词
         effective_system_prompt = system_prompt + "\n\n" + OLLAMA_TOOL_SYSTEM
-        # Also append a reminder directly to the user message so the model
-        # sees it right before generating — reinforces the tool requirement
+        # 同时将提醒直接附加到用户消息，以便模型
+        # 在生成前看到 —— 强化工具要求
         messages[-1] = LLMMessage(
             role="user",
             content=messages[-1].content + OLLAMA_TOOL_REMINDER,
         )
 
-    yield {"event": "status", "data": {"step": "analyzing", "detail": "Analyzing your question..."}}
+    yield {"event": "status", "data": {"step": "analyzing", "detail": "正在分析您的问题..."}}
 
     accumulated_text = ""
     thinking_text = ""
@@ -558,14 +550,14 @@ async def agent_chat_stream(
                 function_calls.append(chunk.function_call)
             elif chunk.type == "text":
                 iteration_text += chunk.text
-                # Speculative streaming — send tokens if no tool call seen yet
+                # 推测性流式传输 —— 如果尚未看到工具调用则发送令牌
                 if not function_calls:
                     accumulated_text += chunk.text
                     tokens_yielded = True
                     yield {"event": "token", "data": {"text": chunk.text}}
 
         if function_calls:
-            # Rollback speculative tokens
+            # 回滚推测性令牌
             if tokens_yielded:
                 accumulated_text = ""
                 yield {"event": "token_rollback", "data": {}}
@@ -580,7 +572,7 @@ async def agent_chat_stream(
 
                 yield {"event": "status", "data": {
                     "step": "retrieving",
-                    "detail": f"Searching: {query[:80]}..."
+                    "detail": f"正在搜索: {query[:80]}..."
                 }}
 
                 context, sources, images, img_parts = await _execute_search_documents(
@@ -599,43 +591,42 @@ async def agent_chat_stream(
                         "image_refs": [i.model_dump() for i in images]
                     }}
 
-                # Build tool result as user message with sources
+                # 将工具结果构建为带有来源的用户消息
                 tool_result_parts = [
-                    "I have retrieved the following document sources for you.\n",
-                    "=== DOCUMENT SOURCES ===",
+                    "我已为您检索到以下文档来源。\n",
+                    "=== 文档来源 ===",
                     context,
-                    "=== END SOURCES ===\n",
-                    "IMPORTANT:\n"
-                    "- Read EVERY source above carefully. Answers often require "
-                    "combining data from MULTIPLE sources.\n"
-                    "- TABLE DATA: Sources may contain table data as 'Key, Year = Value' pairs. "
-                    "Example: 'ROE, 2023 = 12,8%' means ROE was 12.8% in 2023.\n"
-                    "- If no source contains relevant information, say: "
-                    "\"Tài liệu không chứa thông tin này.\"\n",
+                    "=== 来源结束 ===\n",
+                    "重要提示:\n"
+                    "- 仔细阅读上述每一个来源。答案通常需要结合多个来源的数据。\n"
+                    "- 表格数据：来源可能包含表格数据，格式为 '键, 年份 = 值' 对。"
+                    "示例：'ROE, 2023 = 12,8%' 表示 2023 年的 ROE 为 12.8%。\n"
+                    "- 如果没有来源包含相关信息，请说："
+                    "\"文档不包含此信息。\"\n",
                 ]
                 tool_result_content = "\n".join(tool_result_parts)
 
-                # Add image inline references for vision models
+                # 为视觉模型添加图像内联引用
                 user_images: list[LLMImagePart] = []
                 if img_parts:
                     for img_data in img_parts:
-                        tool_result_content += f"\n[IMG-{img_data['img_ref_id']}] (page {img_data['page_no']}):"
+                        tool_result_content += f"\n[IMG-{img_data['img_ref_id']}] (第 {img_data['page_no']} 页):"
                         user_images.append(LLMImagePart(
                             data=img_data["inline_data"]["data"],
                             mime_type=img_data["inline_data"]["mime_type"],
                         ))
 
-                tool_result_content += f"\n\nNow answer the question: {message}"
+                tool_result_content += f"\n\n现在回答问题: {message}"
 
                 if is_gemini:
-                    # Gemini: use native Content with thought_signature
-                    # (required by Gemini 3 for proper multi-turn reasoning)
-                    # and native FunctionResponse for the tool result.
+                    # Gemini：使用原生 Content 与 thought_signature
+                    # （Gemini 3 多轮推理所需）
+                    # 以及原生 FunctionResponse 作为工具结果。
                     from google.genai import types as _gtypes
 
                     raw_content = getattr(provider, "last_response_content", None)
                     if raw_content:
-                        # Preserve the model's raw response (with thought_signature)
+                        # 保留模型的原始响应（包含 thought_signature）
                         messages.append(LLMMessage(
                             role="assistant",
                             content="",
@@ -644,10 +635,10 @@ async def agent_chat_stream(
                     else:
                         messages.append(LLMMessage(
                             role="assistant",
-                            content=f"[Called search_documents(query=\"{query}\")]",
+                            content=f"[调用了 search_documents(query=\"{query}\")]",
                         ))
 
-                    # Build native FunctionResponse with sources context
+                    # 使用来源上下文构建原生 FunctionResponse
                     func_resp_parts = [_gtypes.Part.from_function_response(
                         name="search_documents",
                         response={"result": tool_result_content},
@@ -662,12 +653,12 @@ async def agent_chat_stream(
                         _raw_provider_content=func_resp_content,
                     ))
 
-                    # Send images as a separate user message for vision
+                    # 将图像作为单独的用户消息发送，用于视觉处理
                     if img_parts:
                         img_llm_parts: list[LLMImagePart] = []
-                        img_text = "Referenced document images:\n"
+                        img_text = "引用的文档图像:\n"
                         for img_data in img_parts:
-                            img_text += f"[IMG-{img_data['img_ref_id']}] (page {img_data['page_no']})\n"
+                            img_text += f"[IMG-{img_data['img_ref_id']}] (第 {img_data['page_no']} 页)\n"
                             img_llm_parts.append(LLMImagePart(
                                 data=img_data["inline_data"]["data"],
                                 mime_type=img_data["inline_data"]["mime_type"],
@@ -678,50 +669,50 @@ async def agent_chat_stream(
                             images=img_llm_parts,
                         ))
 
-                    # Remove tool-calling instructions since search is done;
-                    # keep tools so thinking + tool awareness still works.
+                    # 移除工具调用指令，因为搜索已完成；
+                    # 保留工具以便思考和工具感知仍然有效。
                     effective_system_prompt = system_prompt
                 else:
-                    # Ollama: add text-based assistant + user messages
-                    # to maintain proper user/assistant alternation
-                    # (prevents two consecutive user messages which confuses
-                    # small models like qwen3.5).
+                    # Ollama：添加基于文本的助手 + 用户消息
+                    # 以保持正确的用户/助手交替
+                    # （防止两个连续的用户消息，这会混淆
+                    # 像 qwen3.5 这样的小模型）。
                     messages.append(LLMMessage(
                         role="assistant",
-                        content=f"[Called search_documents(query=\"{query}\")]",
+                        content=f"[调用了 search_documents(query=\"{query}\")]",
                     ))
                     messages.append(LLMMessage(
                         role="user",
                         content=tool_result_content,
                         images=user_images,
                     ))
-                    # Remove tool prompt from system prompt so the model
-                    # answers with sources instead of calling the tool again.
+                    # 从系统提示词中移除工具提示词，以便模型
+                    # 使用来源回答而不是再次调用工具。
                     effective_system_prompt = system_prompt
 
                 yield {"event": "status", "data": {
                     "step": "generating",
-                    "detail": "Generating answer..."
+                    "detail": "正在生成答案..."
                 }}
             else:
-                # Unknown tool — treat accumulated text as answer
-                logger.warning(f"Unknown tool call: {fc_name}")
+                # 未知工具 —— 将累积文本视为答案
+                logger.warning(f"未知工具调用: {fc_name}")
                 break
         else:
-            # No tool call from model — answer is in accumulated_text, done.
+            # 模型未进行工具调用 —— 答案在 accumulated_text 中，完成。
             break
 
-    # ── Fallback: model produced no text and no search was done ──────────
-    # Small Ollama models (e.g. qwen3.5:4b) may output thinking about
-    # needing to search but never produce a <tool_call> tag or any text.
-    # Auto-search and retry once to avoid "Unable to generate a response."
+    # ── 回退：模型未生成文本且未进行搜索 ──────────
+    # 小型 Ollama 模型（例如 qwen3.5:4b）可能会输出关于
+    # 需要搜索的思考，但从不生成 <tool_call> 标签或任何文本。
+    # 自动搜索并重试一次，以避免 "无法生成响应。"
     if not accumulated_text and not all_sources and not is_gemini:
         logger.warning(
-            "Ollama produced no text and no tool call — fallback to auto-search"
+            "Ollama 未生成文本且未进行工具调用 —— 回退到自动搜索"
         )
         yield {"event": "status", "data": {
             "step": "retrieving",
-            "detail": f"Searching: {message[:80]}..."
+            "detail": f"正在搜索: {message[:80]}..."
         }}
 
         context, sources, images, img_parts = await _execute_search_documents(
@@ -742,31 +733,31 @@ async def agent_chat_stream(
 
         if sources:
             fallback_parts = [
-                "I have retrieved the following document sources for you.\n",
-                "=== DOCUMENT SOURCES ===",
+                "我已为您检索到以下文档来源。\n",
+                "=== 文档来源 ===",
                 context,
-                "=== END SOURCES ===\n",
-                "IMPORTANT:\n"
-                "- Read EVERY source above carefully.\n"
-                "- If no source contains relevant information, say: "
-                "\"Tài liệu không chứa thông tin này.\"\n",
+                "=== 来源结束 ===\n",
+                "重要提示:\n"
+                "- 仔细阅读上述每一个来源。\n"
+                "- 如果没有来源包含相关信息，请说："
+                "\"文档不包含此信息。\"\n",
             ]
             fallback_content = "\n".join(fallback_parts)
-            fallback_content += f"\n\nNow answer the question: {message}"
+            fallback_content += f"\n\n现在回答问题: {message}"
 
-            # Remove old tool system prompt, add sources as context
+            # 移除旧的工具系统提示词，将来源作为上下文添加
             fallback_msgs = messages.copy()
             fallback_msgs.append(LLMMessage(role="user", content=fallback_content))
 
             yield {"event": "status", "data": {
-                "step": "generating", "detail": "Generating answer..."
+                "step": "generating", "detail": "正在生成答案..."
             }}
 
             async for chunk in provider.astream(
                 fallback_msgs,
                 temperature=0.1,
                 max_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
-                system_prompt=system_prompt,  # original prompt without tool instructions
+                system_prompt=system_prompt,  # 原始提示词，不带工具指令
                 think=enable_thinking,
                 tools=None,
             ):
@@ -777,7 +768,7 @@ async def agent_chat_stream(
                     accumulated_text += chunk.text
                     yield {"event": "token", "data": {"text": chunk.text}}
 
-    # Extract related entities from KG (best-effort)
+    # 从知识图谱中提取相关实体
     related_entities: list[str] = []
     try:
         from app.api.rag import _get_kg_service
@@ -791,18 +782,17 @@ async def agent_chat_stream(
     except Exception:
         pass
 
-    # Strip artifacts
+    # 去除伪影
     if accumulated_text:
         accumulated_text = re.sub(r'<unused\d+>:?\s*', '', accumulated_text).strip()
 
     yield {"event": "complete", "data": {
-        "answer": accumulated_text or "Unable to generate a response.",
+        "answer": accumulated_text or "无法生成响应。",
         "sources": [s.model_dump() for s in all_sources],
         "image_refs": [i.model_dump() for i in all_images],
         "thinking": thinking_text or None,
         "related_entities": related_entities[:30],
     }}
-
 
 # ---------------------------------------------------------------------------
 # SSE Streaming endpoint

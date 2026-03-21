@@ -21,8 +21,8 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
 
   const validateFile = useCallback((file: File): string | null => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!ACCEPTED_EXTENSIONS.has(ext)) return `Unsupported format: .${ext}`;
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) return `File too large (max ${MAX_SIZE_MB}MB)`;
+    if (!ACCEPTED_EXTENSIONS.has(ext)) return `不支持的文件格式: .${ext}`;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) return `文件过大 (最大 ${MAX_SIZE_MB}MB)`;
     return null;
   }, []);
 
@@ -97,7 +97,7 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
                 className="flex flex-col items-center"
               >
                 <FileUp className="w-6 h-6 text-primary mb-1" />
-                <p className="text-xs font-medium text-primary">Drop files here</p>
+                <p className="text-xs font-medium text-primary">拖放文件到这里</p>
               </motion.div>
             ) : (
               <motion.div
@@ -109,10 +109,10 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
               >
                 <Upload className={cn("w-6 h-6 text-muted-foreground mb-1", isUploading && "animate-pulse")} />
                 <p className="text-xs font-medium">
-                  {isUploading ? "Uploading..." : "Drop files or click to upload"}
+                  {isUploading ? "上传中..." : "拖放文件或点击上传"}
                 </p>
                 <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                  PDF, DOCX, PPTX, TXT, MD (max {MAX_SIZE_MB}MB)
+                  PDF, DOCX, PPTX, TXT, MD (最大 {MAX_SIZE_MB}MB)
                 </p>
               </motion.div>
             )}
@@ -144,7 +144,7 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
           )}
         >
           <Upload className={cn("w-4 h-4", isUploading && "animate-pulse")} />
-          {isUploading ? "Uploading..." : "Upload"}
+          {isUploading ? "上传中..." : "上传"}
         </button>
       </>
     );
@@ -185,7 +185,7 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
               className="flex flex-col items-center"
             >
               <FileUp className="w-8 h-8 text-primary mb-2" />
-              <p className="text-sm font-medium text-primary">Drop files here</p>
+              <p className="text-sm font-medium text-primary">拖放文件到这里</p>
             </motion.div>
           ) : (
             <motion.div
@@ -197,10 +197,10 @@ export const UploadZone = memo(function UploadZone({ onUpload, isUploading, comp
             >
               <Upload className="w-8 h-8 text-muted-foreground mb-2" />
               <p className="text-sm font-medium">
-                {isUploading ? "Uploading..." : "Drop files or click to upload"}
+                {isUploading ? "上传中..." : "拖放文件或点击上传"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                PDF, DOCX, PPTX, TXT, MD (max {MAX_SIZE_MB}MB)
+                PDF, DOCX, PPTX, TXT, MD (最大 {MAX_SIZE_MB}MB)
               </p>
             </motion.div>
           )}

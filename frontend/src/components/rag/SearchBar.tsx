@@ -8,10 +8,10 @@ import type { RAGQueryMode, Document } from "@/types";
 // Mode selector
 // ---------------------------------------------------------------------------
 const MODES: { value: RAGQueryMode; label: string; description: string }[] = [
-  { value: "hybrid", label: "Hybrid", description: "Knowledge Graph + Vector search combined" },
-  { value: "vector_only", label: "Vector", description: "Semantic similarity search only" },
-  { value: "local", label: "Local KG", description: "Entity-focused graph traversal" },
-  { value: "global", label: "Global KG", description: "High-level theme extraction" },
+  { value: "hybrid", label: "混合", description: "知识图谱 + 向量搜索结合" },
+  { value: "vector_only", label: "向量", description: "仅语义相似度搜索" },
+  { value: "local", label: "本地知识图谱", description: "以实体为中心的图遍历" },
+  { value: "global", label: "全局知识图谱", description: "高层主题提取" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ export const SearchBar = memo(function SearchBar({ onSearch, isSearching, docume
           <input
             ref={inputRef}
             type="text"
-            placeholder="Ask a question about your documents..."
+            placeholder="询问关于文档的问题..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -105,7 +105,7 @@ export const SearchBar = memo(function SearchBar({ onSearch, isSearching, docume
           size="icon"
           onClick={() => setShowFilters(!showFilters)}
           className={cn("h-10 w-10", showFilters && "bg-primary/10 border-primary/30")}
-          title="Search options"
+          title="搜索选项"
         >
           <Sparkles className="w-4 h-4" />
         </Button>
@@ -116,7 +116,7 @@ export const SearchBar = memo(function SearchBar({ onSearch, isSearching, docume
         <div className="rounded-lg border bg-card/50 p-3 space-y-3">
           {/* Mode selector */}
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Search Mode</label>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">搜索模式</label>
             <div className="flex gap-1.5 flex-wrap">
               {MODES.map((m) => (
                 <button

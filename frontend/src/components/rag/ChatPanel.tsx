@@ -897,6 +897,67 @@ function CopyMessageActions({ content }: { content: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// System prompts (Chinese - matches backend chat_prompt.py)
+// ---------------------------------------------------------------------------
+const DEFAULT_SYSTEM_PROMPT =
+  "你是文档问答助手。你的目标是撰写一个准确、详细和全面的答案来回答用户的问题，" +
+  "利用提供的文档来源。你将获得从知识库检索的文档来源来帮助你回答。" +
+  "你的答案应基于这些提供的来源。你的答案必须自成一体，完全回答问题。" +
+  "你的答案必须正确、高质量、格式良好，并由专家使用无偏见的新闻语调撰写。\n\n" +
+  "## 核心行为\n" +
+  "- 仅使用提供的文档来源回答问题。不要添加任何来自你自己知识但不在来源中的信息。\n" +
+  "- 提取来源中的所有相关信息：数字、百分比、日期、名称、统计数据、表格数据以及具体细节。不要跳过任何相关数据点。\n" +
+  "- 当问题需要时，你可以综合、比较和从多个来源中得出逻辑结论。\n" +
+  "- 如果来源包含部分信息，使用可用内容并明确说明哪些信息缺失或不完整。\n" +
+  "- 当被问及具体数据（收入、比率、分数等）时，始终提供来源中的确切数字，而不是模糊的描述。\n\n" +
+  "## 问题类型处理\n\n" +
+  "**事实性 / 数据提取：**\n" +
+  "提供直接、精确的答案，包含来源中的确切数字、百分比、时间段和数据点。对于财务或统计数据，包括所有相关数字、比率和年度比较。以 Markdown 表格形式呈现多行数据。\n\n" +
+  "**比较 / 分析：**\n" +
+  "使用清晰的比较标准构建回答。格式化为 Markdown 表格而不是列表 —— 在比较项目或功能时更加易读。基于数据绘制逻辑结论。如果来源涵盖不同方面，按比较维度组织。\n\n" +
+  "**技术性 / 学术性：**\n" +
+  "你必须为技术性或学术性问题提供详细的长篇回答。你的回答应格式化为结构化文稿，包含段落和章节，使用 markdown 和标题。包括来源中的相关公式（LaTeX）、算法、架构描述或技术规范。为任何代码片段使用代码块。\n\n" +
+  "**摘要 / 概览：**\n" +
+  "提供全面但简洁的摘要。按主题组织，而不是按源文档。突出最重要的发现、结论或建议。使用要点列出关键要点。\n\n" +
+  "**编码 / 技术实现：**\n" +
+  "你必须使用 markdown 代码块编写代码，指定语言用于语法高亮，例如 ```python 或 ```sql。如果来源中找到代码，先展示代码然后解释。\n\n" +
+  "**科学 / 数学：**\n" +
+  "如果问题涉及来源中的计算或公式，在 LaTeX 中包含公式并显示结果。对于简单计算，仅用最终结果回答。\n\n" +
+  "**翻译：**\n" +
+  "如果用户要求翻译来源内容，提供翻译而不引用来源。\n\n" +
+  "## 推理\n" +
+  "- 确定问题类型并应用适当的上述处理。\n" +
+  "- 如果问题复杂，将其分解为多个子问题。\n" +
+  "- 评估不同来源并确定哪些对每个问题部分有用。\n" +
+  "- 创建权衡所有来源证据的最佳答案。\n" +
+  "- 优先深入思考并获得正确答案。如果经过仔细分析后无法完全回答，部分答案比没有答案好。\n" +
+  "- 确保你的最终答案涵盖问题的所有部分。\n\n" +
+  "## 响应质量\n" +
+  "- 优先准确性而非完整性 —— 部分正确答案比完整错误答案好。\n" +
+  "- 当多个来源提供冲突信息时，承认差异并以引用来源的方式呈现两种观点。\n" +
+  "- 对于复杂问题，分解答案为逻辑章节使用 ## 标题。\n" +
+  "- 当数据存在于任何来源中时，切勿说 '信息未找到' 或 '文档中不包含这些信息'。在声称信息不存在之前，你必须彻底检查所有提供的来源。\n" +
+  "- 如果问题的前提基于来源是错误的，解释原因。\n";
+
+// Hard rules always appended — shown in tooltip, not editable
+const HARD_RULES_SUMMARY = [
+  // 语言（强制）
+  "必须使用与用户问题相同的语言回答。",
+  // 引用
+  "每个主张都要引用：[a3x9][b2m7]。引用前不要留空格。",
+  "图片：[IMG-p4f2][IMG-q7r3]。不要分组或混合括号。",
+  "每句最多引用3个来源。末尾不要有参考文献部分。",
+  // 格式
+  "以摘要开头，切勿以标题或‘根据...’开头。",
+  "使用 ## 作为章节。比较使用表格。仅使用扁平列表。",
+  "LaTeX：行内使用 $...$，块使用 $$...$$。数学公式不要用 Unicode。",
+  "代码使用 ```语言。引用使用 >。关键术语使用 **粗体**。",
+  // 限制
+  "不要犹豫（'重要的是...'）。直接陈述答案。",
+  "不要使用表情符号。切勿以问题结尾。",
+];
+
+// ---------------------------------------------------------------------------
 // Single message bubble
 // ---------------------------------------------------------------------------
 const MessageBubble = memo(function MessageBubble({
@@ -1092,13 +1153,13 @@ function InlineThinkingPreview({ text }: { text: string }) {
 // Typing indicator
 // ---------------------------------------------------------------------------
 const STATUS_LABELS: Record<string, string> = {
-  analyzing: "Analyzing your question...",
-  retrieving: "Searching documents...",
-  generating: "Generating answer...",
+  analyzing: "正在分析您的问题...",
+  retrieving: "正在搜索文档...",
+  generating: "正在生成答案...",
 };
 
 function TypingIndicator({ status }: { status?: ChatStreamStatus }) {
-  const label = (status && STATUS_LABELS[status]) || "Analyzing documents...";
+  const label = (status && STATUS_LABELS[status]) || "正在分析文档...";
   return (
     <div className="flex gap-2 items-start">
       <div className="relative w-6 h-6 flex-shrink-0">
@@ -1126,10 +1187,10 @@ function SuggestionChips({
   onSelect: (q: string) => void;
 }) {
   const suggestions = [
-    "Summarize the key findings",
-    "What are the main topics?",
-    "List important entities mentioned",
-    "Explain the methodology used",
+    "总结关键发现",
+    "主要主题是什么？",
+    "列出提到的重要实体",
+    "解释使用的方法论",
   ];
 
   return (
@@ -1137,9 +1198,9 @@ function SuggestionChips({
       <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
         <Sparkles className="w-6 h-6 text-primary" />
       </div>
-      <h3 className="text-sm font-semibold mb-1">AI Document Assistant</h3>
+      <h3 className="text-sm font-semibold mb-1">AI 文档助手</h3>
       <p className="text-xs text-muted-foreground text-center mb-4 max-w-[240px]">
-        Ask questions about your documents. I'll find relevant information and cite my sources.
+        询问关于文档的问题。我会查找相关信息并注明来源。
       </p>
       <div className="flex flex-wrap gap-1.5 justify-center max-w-[300px]">
         {suggestions.map((s) => (
@@ -1155,69 +1216,6 @@ function SuggestionChips({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// ChatPanel — main export
-// ---------------------------------------------------------------------------
-const DEFAULT_SYSTEM_PROMPT =
-  "You are a document Q&A assistant. Your goal is to write an accurate, " +
-  "detailed, and comprehensive answer to the user's question, drawing from " +
-  "the provided document sources. You will be given retrieved document sources " +
-  "from a knowledge base to help you answer. Your answer should be informed by " +
-  "these provided sources. Your answer must be self-contained and respond fully " +
-  "to the question. Your answer must be correct, high-quality, well-formatted, " +
-  "and written by an expert using an unbiased and journalistic tone.\n\n" +
-  "## Core Behavior\n" +
-  "- Answer questions ONLY using the provided document sources. " +
-  "Do NOT add any information from your own knowledge.\n" +
-  "- Extract ALL relevant information from sources: numbers, percentages, " +
-  "dates, names, statistics, data from tables, and specific details.\n" +
-  "- You may synthesize, compare, and draw logical conclusions from " +
-  "multiple sources when the question requires it.\n" +
-  "- If sources contain partial information, use what is available and " +
-  "clearly note what is missing.\n" +
-  "- When asked about specific data, always provide exact numbers rather " +
-  "than vague descriptions.\n\n" +
-  "## Question Type Handling\n\n" +
-  "**Factual / Data:** Direct answers with exact figures, percentages, " +
-  "time periods. Present multi-row data in tables.\n\n" +
-  "**Comparison / Analysis:** Use Markdown tables for side-by-side comparisons. " +
-  "Draw logical conclusions from data.\n\n" +
-  "**Technical / Academic:** Long detailed answers with sections and headings. " +
-  "Include formulas (LaTeX), code blocks.\n\n" +
-  "**Summary:** Organize by themes, not by source document. " +
-  "Highlight key findings.\n\n" +
-  "**Coding:** Use ```language code blocks. Code first, explain after.\n\n" +
-  "**Science / Math:** Include formulas in LaTeX. For simple calculations, " +
-  "answer with final result.\n\n" +
-  "## Reasoning\n" +
-  "- Determine question type and apply appropriate handling.\n" +
-  "- Break complex questions into sub-questions.\n" +
-  "- A partial correct answer is better than a complete wrong one.\n" +
-  "- Make sure your answer addresses ALL parts of the question.\n\n" +
-  "## Response Quality\n" +
-  "- Prioritize accuracy over completeness.\n" +
-  "- When sources conflict, acknowledge and present both perspectives.\n" +
-  "- NEVER say 'information not found' when data IS present in any source.\n" +
-  "- If the premise is incorrect based on sources, explain why.";
-
-// Hard rules always appended — shown in tooltip, not editable
-const HARD_RULES_SUMMARY = [
-  // Language (MANDATORY)
-  "MUST answer in the SAME language as user's question.",
-  // Citation
-  "Cite EVERY claim: [a3x9][b2m7]. No space before citation.",
-  "Images: [IMG-p4f2][IMG-q7r3]. Never group or mix brackets.",
-  "Max 3 citations per sentence. No References section at end.",
-  // Formatting
-  "Start with summary, NEVER with heading or \"Based on...\".",
-  "## for sections. Tables for comparisons. Flat lists only.",
-  "LaTeX: $inline$ and $$block$$. Never Unicode for math.",
-  "```language for code. > for quotes. **bold** for key terms.",
-  // Restrictions
-  "No hedging (\"It is important...\"). State answers directly.",
-  "No emojis. Never end with a question.",
-];
 
 interface ChatPanelProps {
   workspaceId: string;
@@ -1245,6 +1243,7 @@ export const ChatPanel = memo(function ChatPanel({
   const scrollAnimRef = useRef<number | undefined>(undefined);
   const spacerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Debug mode (Ctrl+Shift+D toggle, persisted in localStorage)
   const [debugMode, setDebugMode] = useState(() =>
@@ -1276,9 +1275,40 @@ export const ChatPanel = memo(function ChatPanel({
   // Sync draft when workspace data loads/changes
   useEffect(() => {
     setPromptDraft(effectivePrompt);
+    // Temporarily remove debug call to avoid circular dependency
+    // debugPrompt();
   }, [effectivePrompt]);
 
+  // Simple effect to initialize textarea height
+  useEffect(() => {
+    if (promptTextareaRef.current && showPromptEditor) {
+      const textarea = promptTextareaRef.current;
+      requestAnimationFrame(() => {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.min(textarea.scrollHeight, 300) + "px";
+      });
+    }
+  }, [promptDraft, showPromptEditor]);
+
+  // Debug: log the actual content
+  console.log("DEFAULT_SYSTEM_PROMPT type:", typeof DEFAULT_SYSTEM_PROMPT);
+  console.log("DEFAULT_SYSTEM_PROMPT length:", DEFAULT_SYSTEM_PROMPT.length);
+  console.log("effectivePrompt type:", typeof effectivePrompt);
+  console.log("effectivePrompt length:", effectivePrompt.length);
+  console.log("promptDraft type:", typeof promptDraft);
+  console.log("promptDraft length:", promptDraft.length);
+
   const promptIsDirty = promptDraft !== effectivePrompt;
+
+  // Debug function to log prompt content
+  const debugPrompt = useCallback(() => {
+    console.log("=== DEBUG PROMPT ===");
+    console.log("effectivePrompt length:", effectivePrompt.length);
+    console.log("promptDraft length:", promptDraft.length);
+    console.log("First 200 chars:", promptDraft.substring(0, 200));
+    console.log("Last 200 chars:", promptDraft.substring(promptDraft.length - 200));
+    console.log("=== END DEBUG ===");
+  }, [effectivePrompt, promptDraft]);
 
   const handleSavePrompt = useCallback(() => {
     if (!workspace) return;
@@ -1664,10 +1694,10 @@ export const ChatPanel = memo(function ChatPanel({
       <div className="h-full flex flex-col items-center justify-center px-4 border-r">
         <Bot className="w-10 h-10 text-muted-foreground/30 mb-3" />
         <p className="text-sm text-muted-foreground text-center">
-          Index some documents to start chatting
+          请索引文档以开始对话
         </p>
         <p className="text-[11px] text-muted-foreground/60 mt-1">
-          Upload and process documents in the data panel
+          在数据面板上传并处理文档
         </p>
       </div>
     );
@@ -1682,7 +1712,7 @@ export const ChatPanel = memo(function ChatPanel({
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b">
         <div className="flex items-center gap-2">
           <Bot className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold">AI Assistant</span>
+          <span className="text-sm font-semibold">AI 助手</span>
         </div>
         <div className="flex items-center gap-1.5">
           {/* Thinking toggle — only visible when model supports thinking */}
@@ -1695,10 +1725,10 @@ export const ChatPanel = memo(function ChatPanel({
                   ? "text-violet-400 bg-violet-400/10 hover:bg-violet-400/15"
                   : "text-muted-foreground hover:bg-muted"
               )}
-              title={enableThinking ? "Thinking mode ON" : "Thinking mode OFF"}
+              title={enableThinking ? "思考模式开启" : "思考模式关闭"}
             >
               <Brain className="w-3 h-3" />
-              <span>{enableThinking ? "Think" : "Think"}</span>
+              <span>{enableThinking ? "思考" : "思考"}</span>
             </button>
           )}
           {/* Force search toggle */}
@@ -1710,21 +1740,32 @@ export const ChatPanel = memo(function ChatPanel({
                 ? "text-amber-500 bg-amber-500/10 hover:bg-amber-500/15"
                 : "text-muted-foreground hover:bg-muted"
             )}
-            title={forceSearch ? "Force Search ON — pre-searches before every answer" : "Force Search OFF — AI decides when to search"}
+            title={forceSearch ? "强制搜索开启 — 每次回答前预搜索" : "强制搜索关闭 — AI决定何时搜索"}
           >
             <DatabaseZap className="w-3 h-3" />
-            <span>Search</span>
+            <span>搜索</span>
           </button>
           {/* System prompt settings */}
           <button
-            onClick={() => setShowPromptEditor((p) => !p)}
+            onClick={() => {
+              setShowPromptEditor((p) => !p);
+              // When opening the editor, force a height recalc after a short delay
+              setTimeout(() => {
+                if (promptTextareaRef.current && showPromptEditor === false) {
+                  const textarea = promptTextareaRef.current;
+                  textarea.style.height = "auto";
+                  textarea.style.height = Math.min(textarea.scrollHeight, 300) + "px";
+                  console.log("Forced textarea height update on open");
+                }
+              }, 100);
+            }}
             className={cn(
               "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors",
               showPromptEditor
                 ? "text-blue-500 bg-blue-500/10 hover:bg-blue-500/15"
                 : "text-muted-foreground hover:bg-muted"
             )}
-            title="System prompt settings"
+            title="系统提示设置"
           >
             <Settings className="w-3 h-3" />
           </button>
@@ -1732,7 +1773,7 @@ export const ChatPanel = memo(function ChatPanel({
             <button
               onClick={handleClear}
               className="p-1 rounded hover:bg-muted transition-colors"
-              title="Clear chat"
+              title="清除聊天"
             >
               <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
             </button>
@@ -1752,12 +1793,12 @@ export const ChatPanel = memo(function ChatPanel({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="flex-shrink-0 overflow-visible border-b relative z-10"
+            className="flex-shrink-0 overflow-hidden border-b relative z-10"
           >
-            <div className="px-3 py-2 space-y-2 bg-muted/20">
+            <div className="px-3 py-2 space-y-2 bg-muted/20 min-h-0">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-muted-foreground">
-                  System Prompt
+                  系统提示词
                 </span>
                 <span className={cn(
                   "text-[9px] px-1.5 py-0.5 rounded-full font-medium",
@@ -1765,19 +1806,28 @@ export const ChatPanel = memo(function ChatPanel({
                     ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
                     : "bg-muted text-muted-foreground/50"
                 )}>
-                  {isCustom ? "Custom" : "Default"}
+                  {isCustom ? "自定义" : "默认"}
                 </span>
               </div>
               <textarea
+                ref={promptTextareaRef}
                 value={promptDraft}
                 onChange={(e) => setPromptDraft(e.target.value)}
-                placeholder="Enter your custom system prompt..."
-                rows={8}
+                placeholder="输入自定义系统提示词..."
                 className={cn(
                   "w-full resize-none rounded-md border border-input bg-background px-2.5 py-2 text-xs",
                   "placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                  "leading-relaxed"
+                  "leading-relaxed",
+                  "min-h-[200px] max-h-[400px]"
                 )}
+                style={{
+                  height: "200px",
+                }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = "auto";
+                  target.style.height = Math.min(target.scrollHeight, 400) + "px";
+                }}
               />
               {/* Hard rules — icon with hover tooltip */}
               <div className="flex items-center gap-1.5">
@@ -1785,14 +1835,14 @@ export const ChatPanel = memo(function ChatPanel({
                   <div className="flex items-center gap-1 cursor-help">
                     <Info className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
-                      Hard rules auto-appended
+                      硬性规则自动附加
                     </span>
                   </div>
                   {/* Tooltip on hover — below icon */}
                   <div className="absolute left-0 top-full mt-1.5 z-50 w-[340px] rounded-lg border border-border bg-background shadow-xl opacity-0 pointer-events-none group-hover/cite:opacity-100 group-hover/cite:pointer-events-auto transition-opacity duration-150">
                     <div className="px-3 py-2.5">
                       <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 mb-1.5">
-                        Citation + Formatting + Restrictions (always enforced)
+                        引用 + 格式 + 限制（始终强制执行）
                       </p>
                       <ul className="space-y-1">
                         {HARD_RULES_SUMMARY.map((rule, i) => (
@@ -1816,10 +1866,10 @@ export const ChatPanel = memo(function ChatPanel({
                       ? "text-muted-foreground hover:bg-muted hover:text-foreground"
                       : "text-muted-foreground/30 cursor-not-allowed"
                   )}
-                  title="Reset to default prompt"
+                  title="重置为默认提示词"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  Reset
+                  重置
                 </button>
                 <button
                   onClick={handleSavePrompt}
@@ -1836,7 +1886,7 @@ export const ChatPanel = memo(function ChatPanel({
                   ) : (
                     <Save className="w-3 h-3" />
                   )}
-                  Save
+                  保存
                 </button>
               </div>
             </div>
@@ -1870,7 +1920,7 @@ export const ChatPanel = memo(function ChatPanel({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about your documents..."
+            placeholder="询问关于文档的问题..."
             rows={1}
             className={cn(
               "flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm",
@@ -1891,7 +1941,7 @@ export const ChatPanel = memo(function ChatPanel({
             <button
               onClick={stream.cancel}
               className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors bg-destructive/15 text-destructive hover:bg-destructive/25"
-              title="Stop generating"
+              title="停止生成"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -1911,7 +1961,7 @@ export const ChatPanel = memo(function ChatPanel({
           )}
         </div>
         <p className="text-[9px] text-muted-foreground/50 mt-1 text-center">
-          Press Enter to send, Shift+Enter for new line
+          按 Enter 发送，Shift+Enter 换行
         </p>
       </div>
     </div>

@@ -7,10 +7,10 @@ import type { DocumentStatus } from "@/types";
 type FilterStatus = "all" | DocumentStatus;
 
 const TABS: { value: FilterStatus; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "indexed", label: "Indexed" },
-  { value: "parsing", label: "Processing" },
-  { value: "failed", label: "Failed" },
+  { value: "all", label: "全部" },
+  { value: "indexed", label: "已索引" },
+  { value: "parsing", label: "处理中" },
+  { value: "failed", label: "失败" },
 ];
 
 interface DocumentFiltersProps {
@@ -36,7 +36,7 @@ export const DocumentFilters = memo(function DocumentFilters({
       <div className="relative flex-1 min-w-[180px] max-w-xs">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         <Input
-          placeholder="Filter by name..."
+          placeholder="按名称筛选..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="pl-8 h-8 text-sm"

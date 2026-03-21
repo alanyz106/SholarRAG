@@ -114,8 +114,8 @@ export const DataPanel = memo(function DataPanel({
 
     setBatchProcessing(true);
     const count = processable.length;
-    toast.info(`Analyzing ${count} document${count > 1 ? "s" : ""}...`, {
-      description: "Documents will be processed sequentially.",
+    toast.info(`正在分析 ${count} 个文档...`, {
+      description: "文档将按顺序处理。",
     });
 
     try {
@@ -123,7 +123,7 @@ export const DataPanel = memo(function DataPanel({
         document_ids: processable.map((d) => d.id),
       });
     } catch {
-      toast.error("Failed to start batch analysis");
+      toast.error("批量分析启动失败");
     } finally {
       setBatchProcessing(false);
     }
@@ -155,7 +155,7 @@ export const DataPanel = memo(function DataPanel({
           className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-3 h-3" />
-          Dashboard
+          仪表板
         </button>
 
         {isEditingName ? (
@@ -164,22 +164,22 @@ export const DataPanel = memo(function DataPanel({
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSaveEdit()}
-              placeholder="Name"
+              placeholder="名称"
               autoFocus
               className="text-sm font-semibold h-8"
             />
             <Input
               value={editDesc}
               onChange={(e) => setEditDesc(e.target.value)}
-              placeholder="Description"
+              placeholder="描述"
               className="text-xs h-7"
             />
             <div className="flex items-center gap-1">
               <Button size="sm" onClick={handleSaveEdit} disabled={!editName.trim()} className="h-6 text-[10px] px-2">
-                <Check className="w-3 h-3 mr-0.5" /> Save
+                <Check className="w-3 h-3 mr-0.5" /> 保存
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setIsEditingName(false)} className="h-6 text-[10px] px-2">
-                <X className="w-3 h-3 mr-0.5" /> Cancel
+                <X className="w-3 h-3 mr-0.5" /> 取消
               </Button>
             </div>
           </div>
@@ -187,7 +187,7 @@ export const DataPanel = memo(function DataPanel({
           <div className="flex items-center gap-1.5">
             <div className="flex-1 min-w-0">
               <h1 className="text-sm font-bold truncate">
-                {workspace?.name || "Knowledge Base"}
+                {workspace?.name || "知识库"}
               </h1>
               {workspace?.description && (
                 <p className="text-[10px] text-muted-foreground truncate">
@@ -217,10 +217,10 @@ export const DataPanel = memo(function DataPanel({
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-semibold flex items-center gap-1.5">
             <FileText className="w-3.5 h-3.5" />
-            Documents
+            文档
           </h2>
           <span className="text-[10px] text-muted-foreground">
-            {documents?.length ?? 0} file{(documents?.length ?? 0) !== 1 ? "s" : ""}
+            {documents?.length ?? 0} 个文件
           </span>
         </div>
         <StatsBar stats={ragStats} processingCount={processingCount} />
@@ -240,11 +240,11 @@ export const DataPanel = memo(function DataPanel({
             <div className="flex items-center gap-2 min-w-0">
               <Sparkles className={cn("w-3.5 h-3.5 text-blue-400 flex-shrink-0", batchProcessing && "animate-spin")} />
               <span className="text-[11px] font-medium text-blue-400 truncate">
-                {batchProcessing ? "Starting..." : `Analyze All (${pendingCount})`}
+                {batchProcessing ? "开始..." : `全部分析 (${pendingCount})`}
               </span>
             </div>
             <span className="text-[10px] text-muted-foreground flex-shrink-0">
-              {pendingCount} pending
+              {pendingCount} 待处理
             </span>
           </button>
         )}
@@ -255,12 +255,12 @@ export const DataPanel = memo(function DataPanel({
         {docsLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
-            <span className="text-xs text-muted-foreground">Loading...</span>
+            <span className="text-xs text-muted-foreground">加载中...</span>
           </div>
         ) : !documents || documents.length === 0 ? (
           <div className="flex-1 flex items-center justify-center px-3">
             <p className="text-xs text-muted-foreground text-center">
-              No documents yet. Drop files above to get started.
+              还没有文档。将文件拖放到上方开始。
             </p>
           </div>
         ) : (
@@ -292,7 +292,7 @@ export const DataPanel = memo(function DataPanel({
               </AnimatePresence>
               {filteredDocs.length === 0 && documents.length > 0 && (
                 <div className="text-center py-4 text-[11px] text-muted-foreground">
-                  No documents match your filter
+                  没有文档符合筛选条件
                 </div>
               )}
             </div>

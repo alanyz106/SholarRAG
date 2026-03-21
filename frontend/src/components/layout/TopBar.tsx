@@ -32,9 +32,9 @@ export const TopBar = memo(function TopBar({ actions, className }: TopBarProps) 
   ];
 
   if (location.pathname === "/") {
-    segments.push({ label: "Knowledge Bases", active: true });
+    segments.push({ label: "知识库", active: true });
   } else if (location.pathname.startsWith("/knowledge-bases/")) {
-    segments.push({ label: "Workspace", active: true });
+    segments.push({ label: "工作区", active: true });
   }
 
   return (
@@ -72,14 +72,14 @@ export const TopBar = memo(function TopBar({ actions, className }: TopBarProps) 
                   ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                   : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
               )}
-              title={`LLM: ${config.llm_provider} / ${config.llm_model}`}
+              title={`大语言模型：${config.llm_provider} / ${config.llm_model}`}
             >
               <Cpu className="w-3 h-3" />
               <span>{config.llm_model}</span>
             </div>
             <div
               className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/10 text-purple-600 dark:text-purple-400"
-              title={`KG Embedding: ${config.kg_embedding_provider} / ${config.kg_embedding_model} (${config.kg_embedding_dimension}d)`}
+              title={`知识图谱嵌入：${config.kg_embedding_provider} / ${config.kg_embedding_model} (${config.kg_embedding_dimension}d)`}
             >
               <Database className="w-3 h-3" />
               <span>{config.kg_embedding_model}</span>
