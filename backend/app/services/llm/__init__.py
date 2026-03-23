@@ -89,7 +89,7 @@ def get_embedding_provider() -> EmbeddingProvider:
             )
         return OpenAIEmbeddingProvider(
             api_key=api_key,
-            model=settings.OPENAI_EMBEDDING_MODEL,
+            model=settings.KG_EMBEDDING_MODEL,  # Use KG-specific model, not OPENAI_EMBEDDING_MODEL
             base_url=base_url,
             organization=organization,
         )

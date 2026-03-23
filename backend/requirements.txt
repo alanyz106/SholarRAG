@@ -23,6 +23,9 @@ docling>=2.0.0
 # Text processing
 langchain-text-splitters>=0.0.1
 
+# LLM integrations (for RAGAS evaluation)
+langchain-openai>=0.1.0
+
 # LLM providers
 openai>=1.0.0
 ollama>=0.4.0

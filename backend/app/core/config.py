@@ -127,7 +127,8 @@ class Settings(BaseSettings):
     # Reranker Provider (for cross-encoder reranking)
     # Options: "sentence_transformers" (local), "cohere" (Cohere API),
     #          "jina" (Jina AI API), "modelscope" (ModelScope OpenAI-compatible),
-    #          "gitee_ai" (Gitee AI API - sentence similarity)
+    #          "gitee_ai" (Gitee AI API - sentence similarity),
+    #          "siliconflow" (SiliconFlow API - rerank)
     RERANKER_PROVIDER: str = Field(default="sentence_transformers")
 
     # Cohere Rerank API (when RERANKER_PROVIDER=cohere)
@@ -151,6 +152,22 @@ class Settings(BaseSettings):
     GITEE_AI_API_TOKEN: str = Field(default="")
     GITEE_AI_RERANK_MODEL: str = Field(default="bge-reranker-v2-m3")
     GITEE_AI_RERANK_TOP_N: int = Field(default=10)
+
+    # SiliconFlow Rerank API (when RERANKER_PROVIDER=siliconflow)
+    SILICONFLOW_API_KEY: str = Field(default="")
+    SILICONFLOW_RERANK_MODEL: str = Field(default="BAAI/bge-reranker-v2-m3")
+    SILICONFLOW_RERANK_TOP_N: int = Field(default=10)
+
+    # Ragas Evaluation LLM (Judge) - 用于评估 RAG 质量
+    # 优先使用 OpenAI-Compatible（如 SiliconFlow）
+    JUDGE_OPENAI_COMPATIBLE_API_KEY: str = Field(default="")
+    JUDGE_OPENAI_COMPATIBLE_BASE_URL: str = Field(default="")
+    JUDGE_OPENAI_COMPATIBLE_MODEL: str = Field(default="")
+
+    # 标准 OpenAI（备用）
+    JUDGE_OPENAI_API_KEY: str = Field(default="")
+    JUDGE_OPENAI_BASE_URL: str = Field(default="https://api.openai.com/v1")
+    JUDGE_OPENAI_MODEL: str = Field(default="gpt-4o-mini")
 
     # CORS
     CORS_ORIGINS: list[str] = ["http://localhost:5174", "http://localhost:3000"]

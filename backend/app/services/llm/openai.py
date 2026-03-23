@@ -231,6 +231,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 if name in model:
                     self._dimension = dim
                     break
+            # Additional model mappings for SiliconFlow
+            if "bge-m3" in model.lower():
+                self._dimension = 1024
+            elif "bge-large-zh" in model.lower() or "bge-large-en" in model.lower():
+                self._dimension = 1024
 
     def _get_dimension(self) -> int:
         """Get embedding dimension for the model."""

@@ -1300,16 +1300,6 @@ export const ChatPanel = memo(function ChatPanel({
 
   const promptIsDirty = promptDraft !== effectivePrompt;
 
-  // Debug function to log prompt content
-  const debugPrompt = useCallback(() => {
-    console.log("=== DEBUG PROMPT ===");
-    console.log("effectivePrompt length:", effectivePrompt.length);
-    console.log("promptDraft length:", promptDraft.length);
-    console.log("First 200 chars:", promptDraft.substring(0, 200));
-    console.log("Last 200 chars:", promptDraft.substring(promptDraft.length - 200));
-    console.log("=== END DEBUG ===");
-  }, [effectivePrompt, promptDraft]);
-
   const handleSavePrompt = useCallback(() => {
     if (!workspace) return;
     // If draft equals default, save empty string → reset to default in DB

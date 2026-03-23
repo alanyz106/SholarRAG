@@ -6,6 +6,7 @@ Cross-encoder reranker for improving retrieval precision.
 Supports multiple providers:
 - sentence_transformers (local)
 - gitee_ai (Gitee AI API)
+- siliconflow (SiliconFlow API)
 
 Default provider: RERANKER_PROVIDER from settings (default: sentence_transformers).
 
@@ -238,6 +239,147 @@ class GiteeAIRerankerProvider(BaseRerankerProvider):
         return results
 
 
+class SiliconFlowRerankerProvider(BaseRerankerProvider):
+    """SiliconFlow reranker API provider."""
+
+    API_URL = "https://api.siliconflow.cn/v1/rerank"
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        top_n: Optional[int] = None,
+    ):
+        """
+        Initialize SiliconFlow reranker provider.
+
+        Args:
+            api_key: SiliconFlow API key
+            model: Model name (default: BAAI/bge-reranker-v2-m3)
+            top_n: Default top N results to return
+        """
+        self.api_key = api_key or settings.SILICONFLOW_API_KEY
+        self.model = model or settings.SILICONFLOW_RERANK_MODEL
+        self.top_n = top_n if top_n is not None else settings.SILICONFLOW_RERANK_TOP_N
+
+        if not self.api_key:
+            raise ValueError(
+                "SILICONFLOW_API_KEY is required. Set it in .env file or pass it explicitly."
+            )
+
+    def _call_api(
+        self,
+        query: str,
+        documents: Sequence[str],
+        model: Optional[str] = None,
+    ) -> list[float]:
+        """
+        Call SiliconFlow rerank API.
+
+        Args:
+            query: The query sentence
+            documents: List of candidate documents to score
+            model: Model name (uses default if not specified)
+
+        Returns:
+            List of relevance scores for each document
+
+        Raises:
+            RuntimeError: If API call fails
+        """
+        import requests
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": model or self.model,
+            "query": query,
+            "documents": list(documents)
+        }
+
+        try:
+            response = requests.post(
+                self.API_URL,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+
+            if response.status_code != 200:
+                error_msg = f"SiliconFlow API error: {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+
+            result = response.json()
+
+            # API returns format: {"results": [{"index": i, "relevance_score": s}, ...]}
+            # We need to extract scores in the original order
+            if "results" not in result:
+                raise RuntimeError(f"Unexpected response format: {result}")
+
+            # Create a list of scores with original indices
+            scores_by_index = {item["index"]: item["relevance_score"] for item in result["results"]}
+
+            # Build scores list in the original document order
+            scores = [scores_by_index.get(i, 0.0) for i in range(len(documents))]
+
+            return scores
+
+        except requests.RequestException as e:
+            error_msg = f"Failed to call SiliconFlow API: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+    def rerank(
+        self,
+        query: str,
+        documents: Sequence[str],
+        top_k: Optional[int] = None,
+        min_score: Optional[float] = None,
+    ) -> List[RerankResult]:
+        """
+        Rerank documents using SiliconFlow API.
+
+        Args:
+            query: The user's search query
+            documents: List of document texts to rerank
+            top_k: Maximum number of results to return (None = all)
+            min_score: Minimum relevance score threshold (None = no filtering)
+
+        Returns:
+            List of RerankResult sorted by score (descending).
+        """
+        if not documents:
+            return []
+
+        # Call API to get scores
+        scores = self._call_api(query, documents)
+
+        # Build results
+        results = [
+            RerankResult(index=i, score=s, text=doc)
+            for i, (s, doc) in enumerate(zip(scores, documents))
+        ]
+
+        # Sort by score descending
+        results.sort(key=lambda r: r.score, reverse=True)
+
+        # Apply min_score filter
+        if min_score is not None:
+            results = [r for r in results if r.score >= min_score]
+
+        # Apply top_k limit
+        if top_k is not None:
+            results = results[:top_k]
+        elif self.top_n is not None:
+            results = results[:self.top_n]
+
+        return results
+
+
 class RerankerService:
     """
     Facade service that delegates to the configured provider.
@@ -271,10 +413,16 @@ class RerankerService:
                 model=model_name or settings.GITEE_AI_RERANK_MODEL,
                 top_n=kwargs.get("top_n", settings.GITEE_AI_RERANK_TOP_N)
             )
+        elif self.provider == "siliconflow":
+            self._provider = SiliconFlowRerankerProvider(
+                api_key=kwargs.get("api_key") or settings.SILICONFLOW_API_KEY,
+                model=model_name or settings.SILICONFLOW_RERANK_MODEL,
+                top_n=kwargs.get("top_n", settings.SILICONFLOW_RERANK_TOP_N)
+            )
         else:
             raise ValueError(
                 f"Unknown RERANKER_PROVIDER: {self.provider!r}. "
-                f"Supported: sentence_transformers, gitee_ai, cohere, jina, modelscope"
+                f"Supported: sentence_transformers, gitee_ai, cohere, jina, modelscope, siliconflow"
             )
 
     @property
