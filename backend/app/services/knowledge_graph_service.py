@@ -40,7 +40,13 @@ async def _kg_llm_complete(
     keyword_extraction: bool = False,
     **kwargs,
 ) -> str:
-    """LightRAG-compatible LLM function using the configured provider."""
+    """LightRAG-compatible LLM function using the configured provider.
+
+    Includes retry logic with exponential backoff for transient errors
+    (e.g., 529 overloaded) to improve KG extraction reliability.
+    """
+    import asyncio
+
     provider = get_llm_provider()
 
     messages: list[LLMMessage] = []
@@ -56,9 +62,31 @@ async def _kg_llm_complete(
 
     messages.append(LLMMessage(role="user", content=prompt))
 
-    return await provider.acomplete(
-        messages, temperature=0.0, max_tokens=4096,
-    )
+    # Retry with exponential backoff for transient errors
+    max_retries = 3
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            return await provider.acomplete(
+                messages, temperature=0.0, max_tokens=4096,
+            )
+        except Exception as e:
+            last_error = e
+            error_str = str(e).lower()
+            # Retry on overloaded errors (529) or common transient issues
+            if "529" in error_str or "overloaded" in error_str or "timeout" in error_str or "connection" in error_str:
+                wait_time = (attempt + 1) * 2  # 2, 4, 6 seconds
+                logger.warning(
+                    f"KG LLM call failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                    f"Retrying in {wait_time}s..."
+                )
+                await asyncio.sleep(wait_time)
+            else:
+                # Non-transient error, don't retry
+                raise
+
+    # All retries exhausted
+    raise last_error from None
 
 
 async def _kg_embed(texts: list[str]) -> np.ndarray:
