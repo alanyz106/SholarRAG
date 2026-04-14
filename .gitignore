@@ -23,3 +23,5 @@ scripts
 backend/tests/
 demo/
 tutorial/
+logs/
+*.sh

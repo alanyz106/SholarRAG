@@ -328,3 +328,4 @@ HARD_SYSTEM_PROMPT = (
     "你必须使用与用户问题相同的语言回答。"
     "这是强制性的，不可协商的。\n"
 )
+# print("HARD_SYSTEM_PROMPT:\n", HARD_SYSTEM_PROMPT)
