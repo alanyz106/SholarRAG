@@ -1,13 +1,13 @@
 """
 Vector Store Service
-Handles ChromaDB operations for storing and retrieving document embeddings.
+Handles Qdrant Cloud operations for storing and retrieving document embeddings.
 """
 from __future__ import annotations
 
 import logging
 from typing import Sequence, Optional, TYPE_CHECKING
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny
 
 from app.core.config import settings
 
@@ -16,89 +16,78 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Global ChromaDB client
-_chroma_client: Optional[chromadb.HttpClient] = None
+# Global Qdrant client
+_qdrant_client: Optional[QdrantClient] = None
 
 
-def get_chroma_client() -> chromadb.HttpClient:
-    """Get or create the ChromaDB client singleton."""
-    global _chroma_client
+def get_qdrant_client() -> QdrantClient:
+    """Get or create the Qdrant client singleton."""
+    global _qdrant_client
 
-    if _chroma_client is None:
-        logger.info(f"Connecting to ChromaDB at {settings.CHROMA_HOST}:{settings.CHROMA_PORT}")
-        _chroma_client = chromadb.HttpClient(
-            host=settings.CHROMA_HOST,
-            port=settings.CHROMA_PORT,
-            settings=ChromaSettings(
-                anonymized_telemetry=False,
+    if _qdrant_client is None:
+        if not settings.QDRANT_URL:
+            raise ValueError(
+                "QDRANT_URL is not set. "
+                "Please configure QDRANT_URL in your .env file."
             )
+        logger.info(f"Connecting to Qdrant Cloud: {settings.QDRANT_URL}")
+        _qdrant_client = QdrantClient(
+            url=settings.QDRANT_URL,
+            api_key=settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None,
         )
-        # Fix for chromadb 0.4.22: set Content-Type header for JSON requests
-        _chroma_client._server._session.headers.update({"Content-Type": "application/json"})
-        # Test connection
-        _chroma_client.heartbeat()
-        logger.info("Connected to ChromaDB successfully")
+        logger.info("Connected to Qdrant Cloud successfully")
 
-    return _chroma_client
+    return _qdrant_client
 
 
 class VectorStore:
     """
-    Vector store service for managing document embeddings in ChromaDB.
+    Vector store service for managing document embeddings in Qdrant.
     Each knowledge base has its own collection for namespace isolation.
     """
 
     COLLECTION_PREFIX = "kb_"
+    VECTOR_DIMENSION = 1024  # bge-m3-v2 dimension
 
     def __init__(self, workspace_id: int):
         self.workspace_id = workspace_id
         self.collection_name = f"{self.COLLECTION_PREFIX}{workspace_id}"
-        self._collection = None
+        self._collection_initialized = False
 
-    @property
-    def collection(self) -> chromadb.Collection:
-        """Get or create the collection."""
-        if self._collection is None:
-            client = get_chroma_client()
+    def _ensure_collection(self) -> None:
+        """Ensure the collection exists, create if not."""
+        if self._collection_initialized:
+            return
 
-            # Get expected embedding dimension from the configured embedding provider
-            # This avoids ChromaDB's DefaultEmbeddingFunction which downloads all-MiniLM-L6-v2
-            from app.services.embedder import get_embedding_service
-            try:
-                embedder = get_embedding_service()
-                expected_dim = embedder.dimension
-            except Exception:
-                # Fallback if embedding service not available yet
-                expected_dim = 1536  # default for OpenAI text-embedding-3-small
+        client = get_qdrant_client()
 
-            class DummyEmbeddingFunction:
-                """Dummy embedding function that returns zero vectors of correct dimension."""
-                def __init__(self, dim: int):
-                    self.dim = dim
-                def __call__(self, input: list[str]) -> list[list[float]]:
-                    # Return zero vectors - never actually used since we provide embeddings
-                    return [[0.0] * self.dim for _ in range(len(input))]
+        # Check if collection exists
+        collections = client.get_collections()
+        collection_names = [c.name for c in collections.collections]
 
-            dummy_emb_func = DummyEmbeddingFunction(expected_dim)
-
-            self._collection = client.get_or_create_collection(
-                name=self.collection_name,
-                metadata={"hnsw:space": "cosine"},
-                embedding_function=dummy_emb_func,
+        if self.collection_name not in collection_names:
+            logger.info(f"Creating Qdrant collection: {self.collection_name}")
+            client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(
+                    size=self.VECTOR_DIMENSION,
+                    distance=Distance.DOT,
+                ),
             )
-        return self._collection
+            logger.info(f"Collection {self.collection_name} created successfully")
+
+        self._collection_initialized = True
 
     def _recreate_collection(self) -> None:
         """Delete and recreate the collection (resets cached reference)."""
-        client = get_chroma_client()
+        client = get_qdrant_client()
         try:
-            client.delete_collection(self.collection_name)
+            client.delete_collection(collection_name=self.collection_name)
             logger.info(f"Deleted collection {self.collection_name} for dimension migration")
         except Exception:
             pass
-        self._collection = None
-        # Force re-creation
-        _ = self.collection
+        self._collection_initialized = False
+        self._ensure_collection()
 
     def add_documents(
         self,
@@ -115,28 +104,40 @@ class VectorStore:
         if not ids:
             return
 
+        self._ensure_collection()
+        client = get_qdrant_client()
+
+        # Prepare points
+        points = []
+        for i, point_id in enumerate(ids):
+            payload = {
+                "content": documents[i],
+            }
+            if metadatas:
+                payload.update(metadatas[i])
+
+            points.append({
+                "id": point_id,
+                "vector": embeddings[i],
+                "payload": payload,
+            })
+
         try:
-            self.collection.add(
-                ids=list(ids),
-                embeddings=list(embeddings),
-                documents=list(documents),
-                metadatas=list(metadatas) if metadatas else None
+            client.upsert(
+                collection_name=self.collection_name,
+                points=points,
             )
         except Exception as e:
             error_msg = str(e).lower()
-            if "dimension" in error_msg:
-                # Dimension mismatch — collection was created with old embedding model
+            if "dimension" in error_msg or "vector_size" in error_msg:
                 logger.warning(
                     f"Dimension mismatch in {self.collection_name}: {e}. "
                     f"Recreating collection for new embedding model."
                 )
                 self._recreate_collection()
-                # Retry with fresh collection
-                self.collection.add(
-                    ids=list(ids),
-                    embeddings=list(embeddings),
-                    documents=list(documents),
-                    metadatas=list(metadatas) if metadatas else None
+                client.upsert(
+                    collection_name=self.collection_name,
+                    points=points,
                 )
             else:
                 raise
@@ -154,17 +155,43 @@ class VectorStore:
         if include is None:
             include = ["documents", "metadatas", "distances"]
 
+        self._ensure_collection()
+        client = get_qdrant_client()
+
+        # Build Qdrant filter from ChromaDB-style where clause
+        qdrant_filter = None
+        if where:
+            conditions = []
+            for key, value in where.items():
+                if isinstance(value, dict) and "$in" in value:
+                    conditions.append(
+                        FieldCondition(
+                            key=key,
+                            match=MatchAny(any=value["$in"])
+                        )
+                    )
+                else:
+                    conditions.append(
+                        FieldCondition(
+                            key=key,
+                            match=MatchAny(any=[value])
+                        )
+                    )
+            if conditions:
+                qdrant_filter = Filter(must=conditions)
+
         try:
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results,
-                where=where,
-                include=include
+            results = client.search(
+                collection_name=self.collection_name,
+                query_vector=query_embedding,
+                limit=n_results,
+                query_filter=qdrant_filter,
+                with_payload=True,
+                with_vectors=False,
             )
         except Exception as e:
             error_msg = str(e).lower()
-            if "dimension" in error_msg:
-                # Query with new-dimension embedding against old collection
+            if "dimension" in error_msg or "vector_size" in error_msg:
                 logger.warning(
                     f"Dimension mismatch on query in {self.collection_name}: {e}. "
                     f"Collection needs reindexing."
@@ -172,41 +199,94 @@ class VectorStore:
                 return {"ids": [], "documents": [], "metadatas": [], "distances": []}
             raise
 
-        # Flatten single query results
+        # Flatten results - Qdrant returns list of ScoredPoint
+        ids = []
+        documents = []
+        metadatas = []
+        distances = []
+
+        for point in results:
+            ids.append(str(point.id))
+            payload = point.payload or {}
+
+            # Content is stored in "content" field
+            documents.append(payload.get("content", ""))
+
+            # Metadata is everything except "content"
+            meta = {k: v for k, v in payload.items() if k != "content"}
+            metadatas.append(meta)
+
+            # Qdrant returns score (Dot Product), we store as distance
+            score = point.score if hasattr(point, 'score') else 0.0
+            distances.append(score)
+
         return {
-            "ids": results["ids"][0] if results["ids"] else [],
-            "documents": results["documents"][0] if results.get("documents") else [],
-            "metadatas": results["metadatas"][0] if results.get("metadatas") else [],
-            "distances": results["distances"][0] if results.get("distances") else []
+            "ids": ids,
+            "documents": documents,
+            "metadatas": metadatas,
+            "distances": distances,
         }
 
     def delete_by_document_id(self, document_id: int) -> None:
         """Delete all chunks belonging to a specific document."""
-        self.collection.delete(
-            where={"document_id": document_id}
+        self._ensure_collection()
+        client = get_qdrant_client()
+
+        client.delete(
+            collection_name=self.collection_name,
+            points_selector=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchAny(any=[document_id])
+                    )
+                ]
+            ),
         )
         logger.info(f"Deleted chunks for document {document_id} from collection {self.collection_name}")
 
     def delete_collection(self) -> None:
         """Delete the entire collection for this knowledge base."""
-        client = get_chroma_client()
+        client = get_qdrant_client()
         try:
-            client.delete_collection(self.collection_name)
-            self._collection = None
+            client.delete_collection(collection_name=self.collection_name)
+            self._collection_initialized = False
             logger.info(f"Deleted collection {self.collection_name}")
         except Exception as e:
             logger.warning(f"Failed to delete collection {self.collection_name}: {e}")
 
     def count(self) -> int:
         """Return the number of documents in the collection."""
-        return self.collection.count()
+        self._ensure_collection()
+        client = get_qdrant_client()
+        result = client.get_collection(collection_name=self.collection_name)
+        return result.points_count
 
     def get_by_ids(self, ids: Sequence[str]) -> dict:
         """Get documents by their IDs."""
-        return self.collection.get(
+        self._ensure_collection()
+        client = get_qdrant_client()
+
+        results = client.retrieve(
+            collection_name=self.collection_name,
             ids=list(ids),
-            include=["documents", "metadatas"]
+            with_payload=True,
+            with_vectors=False,
         )
+
+        documents = []
+        metadatas = []
+
+        for point in results:
+            payload = point.payload or {}
+            documents.append(payload.get("content", ""))
+            meta = {k: v for k, v in payload.items() if k != "content"}
+            metadatas.append(meta)
+
+        return {
+            "documents": documents,
+            "metadatas": metadatas,
+        }
 
 
 def get_vector_store(workspace_id: int) -> VectorStore:
