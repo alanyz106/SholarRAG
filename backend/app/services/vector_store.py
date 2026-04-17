@@ -5,6 +5,7 @@ Handles Qdrant Cloud operations for storing and retrieving document embeddings.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Sequence, Optional, TYPE_CHECKING
 from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny
@@ -76,6 +77,17 @@ class VectorStore:
             )
             logger.info(f"Collection {self.collection_name} created successfully")
 
+            # Create payload index on document_id for efficient filtering
+            try:
+                client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name="document_id",
+                    field_schema="integer",  # Payload type for document_id
+                )
+                logger.info(f"Created payload index on document_id for {self.collection_name}")
+            except Exception as e:
+                logger.warning(f"Could not create payload index on document_id: {e}")
+
         self._collection_initialized = True
 
     def _recreate_collection(self) -> None:
@@ -109,15 +121,16 @@ class VectorStore:
 
         # Prepare points
         points = []
-        for i, point_id in enumerate(ids):
+        for i, original_id in enumerate(ids):
             payload = {
                 "content": documents[i],
+                "original_id": original_id,  # Store original ID for reference
             }
             if metadatas:
                 payload.update(metadatas[i])
 
             points.append({
-                "id": point_id,
+                "id": _str_to_uuid(original_id),  # Convert to UUID for Qdrant
                 "vector": embeddings[i],
                 "payload": payload,
             })
@@ -181,9 +194,9 @@ class VectorStore:
                 qdrant_filter = Filter(must=conditions)
 
         try:
-            results = client.search(
+            results = client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=n_results,
                 query_filter=qdrant_filter,
                 with_payload=True,
@@ -199,21 +212,25 @@ class VectorStore:
                 return {"ids": [], "documents": [], "metadatas": [], "distances": []}
             raise
 
-        # Flatten results - Qdrant returns list of ScoredPoint
+        # Flatten results - Qdrant returns QueryResponse with points list
+        points = results.points if hasattr(results, 'points') else results
         ids = []
         documents = []
         metadatas = []
         distances = []
 
-        for point in results:
-            ids.append(str(point.id))
+        for point in points:
             payload = point.payload or {}
+
+            # Return original_id if available (stored from add_documents)
+            # Fall back to UUID string if not
+            ids.append(payload.get("original_id", str(point.id)))
 
             # Content is stored in "content" field
             documents.append(payload.get("content", ""))
 
-            # Metadata is everything except "content"
-            meta = {k: v for k, v in payload.items() if k != "content"}
+            # Metadata is everything except "content" and "original_id"
+            meta = {k: v for k, v in payload.items() if k not in ("content", "original_id")}
             metadatas.append(meta)
 
             # Qdrant returns score (Dot Product), we store as distance
@@ -267,9 +284,12 @@ class VectorStore:
         self._ensure_collection()
         client = get_qdrant_client()
 
+        # Convert string IDs to UUIDs for Qdrant
+        qdrant_ids = [_str_to_uuid(id) for id in ids]
+
         results = client.retrieve(
             collection_name=self.collection_name,
-            ids=list(ids),
+            ids=qdrant_ids,
             with_payload=True,
             with_vectors=False,
         )
@@ -280,7 +300,7 @@ class VectorStore:
         for point in results:
             payload = point.payload or {}
             documents.append(payload.get("content", ""))
-            meta = {k: v for k, v in payload.items() if k != "content"}
+            meta = {k: v for k, v in payload.items() if k not in ("content", "original_id")}
             metadatas.append(meta)
 
         return {
@@ -292,3 +312,13 @@ class VectorStore:
 def get_vector_store(workspace_id: int) -> VectorStore:
     """Factory function to create a VectorStore for a knowledge base."""
     return VectorStore(workspace_id)
+
+
+def _str_to_uuid(str_id: str) -> str:
+    """Convert a string ID to a deterministic UUID for Qdrant.
+
+    Qdrant requires point IDs to be unsigned integers or UUIDs.
+    We use UUID v5 (name-based with namespace) for deterministic mapping.
+    """
+    namespace_uuid = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # URL namespace
+    return str(uuid.uuid5(namespace_uuid, str_id))
