@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     KG_OPENAI_BASE_URL: str = Field(default="")
     KG_OPENAI_ORGANIZATION: Optional[str] = Field(default=None)
 
+    # Qdrant Cloud
+    QDRANT_URL: str = Field(default="")
+    QDRANT_API_KEY: str = Field(default="")
+
     # ChromaDB
     CHROMA_HOST: str = Field(default="localhost")
     CHROMA_PORT: int = Field(default=8002)
