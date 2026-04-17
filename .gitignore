@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 .env
 frontend/.env
+.worktrees/
 node_modules/
 dist/
 backend/data/docling/
@@ -17,7 +18,6 @@ nexusrag.db
 showcase/*
 CLAUDE.md
 *.log
-*.md
 scripts
 /.claude
 backend/tests/
@@ -25,3 +25,4 @@ demo/
 tutorial/
 logs/
 *.sh
+backend/chroma_data_backup*
