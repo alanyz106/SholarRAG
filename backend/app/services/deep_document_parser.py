@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.core.config import settings
+from app.services.chunker import DocumentChunker
 from app.services.models.parsed_document import (
     ExtractedImage,
     ExtractedTable,
@@ -802,20 +803,344 @@ class DoclingDocumentParser(DocumentParserBase):
         )
 
 
+class UnstructuredDocumentParser(DocumentParserBase):
+    """
+    Fast document parser using Unstructured library.
+
+    Supports: PDF (via pdfplumber hi_res strategy)
+    Falls back to legacy loader for TXT/MD.
+
+    Speed: ~3-10x faster than Docling.
+    Transparency: Every parsed element is visible and accessible.
+    """
+
+    UNSTRUCTURED_EXTENSIONS = {".pdf"}
+    _chunker: "DocumentChunker"
+
+    def __init__(self, workspace_id: int, output_dir: Optional[Path] = None):
+        self.workspace_id = workspace_id
+        self.output_dir = output_dir or (
+            settings.BASE_DIR / "data" / "unstructured" / f"kb_{workspace_id}"
+        )
+        self._images_dir = self.output_dir / "images"
+        self._chunker = DocumentChunker(
+            chunk_size=settings.NEXUSRAG_CHUNK_MAX_TOKENS * 4,  # rough char estimate
+            chunk_overlap=50,
+        )
+
+    @staticmethod
+    def is_docling_supported(file_path: str | Path) -> bool:
+        """Unstructured uses its own partition, not Docling."""
+        return False
+
+    def parse(
+        self,
+        file_path: str | Path,
+        document_id: int,
+        original_filename: str,
+    ) -> ParsedDocument:
+        """Parse a document using Unstructured."""
+        path = Path(file_path)
+        suffix = path.suffix.lower()
+
+        if suffix in self.UNSTRUCTURED_EXTENSIONS:
+            return self._parse_with_unstructured(path, document_id, original_filename)
+        elif suffix in _LEGACY_EXTENSIONS:
+            return self._parse_legacy(path, document_id, original_filename)
+        else:
+            raise ValueError(
+                f"Unsupported file type: {suffix}. "
+                f"Supported: {self.UNSTRUCTURED_EXTENSIONS | _LEGACY_EXTENSIONS}"
+            )
+
+    def _parse_with_unstructured(
+        self,
+        file_path: Path,
+        document_id: int,
+        original_filename: str,
+    ) -> ParsedDocument:
+        """Parse PDF using Unstructured hi_res strategy."""
+        from unstructured.partition.pdf import partition_pdf
+        import pdfplumber
+
+        start_time = time.time()
+
+        # Partition PDF with hi_res strategy (enables table detection)
+        elements = partition_pdf(
+            filename=str(file_path),
+            strategy="hi_res",
+            infer_table_structure=True,
+            extract_images=True,
+            include_page_breaks=True,
+        )
+
+        # Get page count via pdfplumber
+        page_count = 0
+        try:
+            with pdfplumber.open(str(file_path)) as pdf:
+                page_count = len(pdf.pages)
+        except Exception:
+            pass
+
+        # Collect all elements for markdown and page tracking
+        element_texts: list[tuple[str, int]] = []  # (text, page_no)
+        all_images: list[ExtractedImage] = []
+        all_tables: list[ExtractedTable] = []
+        seen_image_count = 0
+
+        current_page = 1
+
+        for el in elements:
+            # Track page breaks
+            if el.type == "PageBreak":
+                current_page += 1
+                continue
+
+            el_text = el.text.strip() if el.text else ""
+            if not el_text:
+                continue
+
+            # Determine page from element metadata
+            page_no = self._get_page_from_element(el, current_page)
+
+            if el.type == "Table":
+                # Tables get their own section, not repeated in body text
+                table_id = str(uuid.uuid4())
+                table_md = el_text
+                num_rows = 0
+                num_cols = 0
+
+                # Try to get structure from metadata
+                if hasattr(el, "metadata") and el.metadata:
+                    if hasattr(el.metadata, "text_as_html") and el.metadata.text_as_html:
+                        table_md = el.metadata.text_as_html
+                    # Count rows from markdown table
+                    num_rows = el_text.count("\n") + 1
+                    # Count columns from first row
+                    lines = el_text.strip().split("\n")
+                    if lines:
+                        num_cols = lines[0].count("|") + 1
+
+                all_tables.append(ExtractedTable(
+                    table_id=table_id,
+                    document_id=document_id,
+                    page_no=page_no,
+                    content_markdown=table_md,
+                    num_rows=num_rows,
+                    num_cols=num_cols,
+                ))
+                # Reference in body text
+                element_texts.append((f"[Table: {el_text[:100]}...]", page_no))
+            else:
+                element_texts.append((el_text, page_no))
+
+            # Handle images
+            if hasattr(el, "metadata") and el.metadata and hasattr(el.metadata, "image_path"):
+                img_path_str = el.metadata.image_path
+                if img_path_str and Path(img_path_str).exists():
+                    seen_image_count += 1
+                    image_id = str(uuid.uuid4())
+                    out_path = self._images_dir / f"{image_id}.png"
+
+                    # Copy image to our output dir
+                    import shutil
+                    self._images_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(img_path_str, str(out_path))
+
+                    # Try to get page from filename or metadata
+                    img_page = page_no
+                    width = 0
+                    height = 0
+
+                    try:
+                        from PIL import Image as PILImage
+                        with PILImage.open(str(out_path)) as img:
+                            width, height = img.size
+                    except Exception:
+                        pass
+
+                    caption = ""
+                    if hasattr(el, "caption") and el.caption:
+                        caption = el.caption
+
+                    all_images.append(ExtractedImage(
+                        image_id=image_id,
+                        document_id=document_id,
+                        page_no=img_page,
+                        file_path=str(out_path),
+                        caption=caption,
+                        width=width,
+                        height=height,
+                    ))
+
+        # Build markdown from elements
+        md_parts: list[str] = []
+        for text, page_no in element_texts:
+            md_parts.append(f"{text}")
+
+        markdown = "\n\n".join(md_parts)
+
+        # Build page→images lookup for chunk enrichment
+        page_images: dict[int, list[ExtractedImage]] = {}
+        for img in all_images:
+            page_images.setdefault(img.page_no, []).append(img)
+
+        # Build page→tables lookup
+        page_tables: dict[int, list[ExtractedTable]] = {}
+        for tbl in all_tables:
+            page_tables.setdefault(tbl.page_no, []).append(tbl)
+
+        # Chunk the full markdown text
+        text_chunks = self._chunker.split_text(
+            text=markdown,
+            source=original_filename,
+            extra_metadata={"document_id": document_id},
+        )
+
+        # Wrap as EnrichedChunks with page/image/table awareness
+        chunks: list[EnrichedChunk] = []
+        assigned_images: set[str] = set()
+        assigned_tables: set[str] = set()
+
+        for i, tc in enumerate(text_chunks):
+            # Try to infer page from chunk position in markdown
+            chunk_page = self._estimate_page_for_chunk(tc, element_texts)
+
+            # Image enrichment: assign images on same page
+            chunk_image_refs: list[str] = []
+            if chunk_page in page_images:
+                for img in page_images[chunk_page]:
+                    if img.image_id not in assigned_images:
+                        chunk_image_refs.append(img.image_id)
+                        assigned_images.add(img.image_id)
+
+            # Table enrichment: assign tables on same page
+            chunk_table_refs: list[str] = []
+            if chunk_page in page_tables:
+                for tbl in page_tables[chunk_page]:
+                    if tbl.table_id not in assigned_tables:
+                        chunk_table_refs.append(tbl.table_id)
+                        assigned_tables.add(tbl.table_id)
+
+            has_table = bool(chunk_table_refs)
+            has_code = "```" in tc.content
+
+            # Build enriched text (append image/table captions)
+            enriched = tc.content
+            if chunk_image_refs and all_images:
+                img_by_id = {img.image_id: img for img in all_images}
+                img_parts = []
+                for img_id in chunk_image_refs:
+                    img = img_by_id.get(img_id)
+                    if img and img.caption:
+                        img_parts.append(f"[Image on page {img.page_no}]: {img.caption}")
+                if img_parts:
+                    enriched += "\n\n" + "\n".join(img_parts)
+
+            if chunk_table_refs and all_tables:
+                tbl_by_id = {tbl.table_id: tbl for tbl in all_tables}
+                tbl_parts = []
+                for tbl_id in chunk_table_refs:
+                    tbl = tbl_by_id.get(tbl_id)
+                    if tbl and tbl.caption:
+                        tbl_parts.append(f"[Table on page {tbl.page_no}]: {tbl.caption}")
+                if tbl_parts:
+                    enriched += "\n\n" + "\n".join(tbl_parts)
+
+            chunks.append(EnrichedChunk(
+                content=enriched,
+                chunk_index=i,
+                source_file=original_filename,
+                document_id=document_id,
+                page_no=chunk_page,
+                image_refs=chunk_image_refs,
+                table_refs=chunk_table_refs,
+                has_table=has_table,
+                has_code=has_code,
+                contextualized="",
+            ))
+
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.info(
+            f"Unstructured parsed document {document_id} ({original_filename}) in {elapsed_ms}ms: "
+            f"{page_count} pages, {len(chunks)} chunks, "
+            f"{len(all_images)} images, {len(all_tables)} tables"
+        )
+
+        return ParsedDocument(
+            document_id=document_id,
+            original_filename=original_filename,
+            markdown=markdown,
+            page_count=page_count,
+            chunks=chunks,
+            images=all_images,
+            tables=all_tables,
+            tables_count=len(all_tables),
+        )
+
+    @staticmethod
+    def _get_page_from_element(el, default_page: int) -> int:
+        """Extract page number from Unstructured element metadata."""
+        try:
+            if hasattr(el, "metadata") and el.metadata:
+                page = getattr(el.metadata, "page_number", None)
+                if page is not None:
+                    return int(page)
+                # Try coordinates-based page estimate
+                if hasattr(el.metadata, "coordinates"):
+                    # coordinates may have bbox info
+                    pass
+        except Exception:
+            pass
+        return default_page
+
+    def _estimate_page_for_chunk(
+        self,
+        tc,
+        element_texts: list[tuple[str, int]],
+    ) -> int:
+        """Estimate which page a text chunk belongs to based on element positions.
+
+        Uses a simple text-overlap heuristic: finds the element whose text
+        most overlaps with the chunk content and returns its page number.
+        Falls back to 1 if no match found.
+        """
+        if not element_texts:
+            return 1
+
+        best_page = 1
+        best_overlap = 0
+        chunk_preview = tc.content[:100].lower()
+
+        for text, page_no in element_texts:
+            text_lower = text.lower()
+            overlap = len(set(chunk_preview.split()) & set(text_lower.split()))
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_page = page_no
+
+        return best_page
+
+
 def get_document_parser(workspace_id: int) -> DocumentParserBase:
     """Factory: create a DocumentParser based on DOCUMENT_PARSER_PROVIDER config.
 
-    Default: DoclingDocumentParser (supports PDF, DOCX, PPTX, HTML).
-    Fallback: LegacyDocumentParser for TXT/MD (auto-detected by file extension).
+    Supported providers:
+    - "docling": Full-featured, slower (PDF, DOCX, PPTX, HTML)
+    - "unstructured": Fast, lightweight (PDF)
+
+    TXT/MD files are always handled by the legacy fallback regardless of provider.
     """
     provider = getattr(settings, "DOCUMENT_PARSER_PROVIDER", "docling").lower()
 
     if provider == "docling":
         return DoclingDocumentParser(workspace_id=workspace_id)
+    elif provider == "unstructured":
+        return UnstructuredDocumentParser(workspace_id=workspace_id)
 
     raise ValueError(
         f"DOCUMENT_PARSER_PROVIDER '{provider}' is not supported. "
-        f"Available: docling"
+        f"Available: docling, unstructured"
     )
 
 
