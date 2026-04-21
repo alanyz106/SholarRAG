@@ -158,8 +158,8 @@ class KnowledgeGraphService:
             graph_storage="NetworkXStorage",
             doc_status_storage="JsonDocStatusStorage",
             addon_params={
-                "language": settings.NEXUSRAG_KG_LANGUAGE,
-                "entity_types": settings.NEXUSRAG_KG_ENTITY_TYPES,
+                "language": settings.KG_LANGUAGE,
+                "entity_types": settings.KG_ENTITY_TYPES,
             },
         )
 

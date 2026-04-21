@@ -62,11 +62,30 @@ class Settings(BaseSettings):
     KG_OPENAI_API_KEY: str = Field(default="")  # 独立 key
 
     # === NexusRAG Pipeline ===
+    NEXUSRAG_ENABLED: bool = False
+    NEXUSRAG_ENABLE_KG: bool = True
     NEXUSRAG_DOCLING_DEVICE: str = "auto"
+    NEXUSRAG_DOCLING_NUM_THREADS: int = 4
+    NEXUSRAG_DOCLING_IMAGES_SCALE: float = 2.0
     NEXUSRAG_CHUNK_MAX_TOKENS: int = 512
     NEXUSRAG_VECTOR_PREFETCH: int = 20
     NEXUSRAG_RERANKER_TOP_K: int = 8
     NEXUSRAG_MIN_RELEVANCE_SCORE: float = 0.15
+    NEXUSRAG_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    NEXUSRAG_RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    NEXUSRAG_ENABLE_IMAGE_EXTRACTION: bool = True
+    NEXUSRAG_ENABLE_IMAGE_CAPTIONING: bool = False
+    NEXUSRAG_ENABLE_TABLE_CAPTIONING: bool = False
+    NEXUSRAG_ENABLE_FORMULA_ENRICHMENT: bool = True
+    NEXUSRAG_MAX_IMAGES_PER_DOC: int = 50
+    NEXUSRAG_MAX_TABLE_MARKDOWN_CHARS: int = 2000
+    NEXUSRAG_KG_CHUNK_TOKEN_SIZE: int = 256
+    NEXUSRAG_KG_QUERY_TIMEOUT: int = 30
+
+    # === KG Embedding (knowledge graph) ===
+    KG_EMBEDDING_PROVIDER: str = "sentence_transformers"
+    KG_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    KG_EMBEDDING_DIMENSION: int = 1024
 
     # === 评估 (Judge) ===
     JUDGE_PROVIDER: str = "openai"
