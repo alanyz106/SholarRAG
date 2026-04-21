@@ -269,7 +269,7 @@ async def agent_chat_stream(
         async for chunk in provider.astream(
             messages,
             temperature=0.1,
-            max_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+            max_tokens=settings.LLM_MAX_TOKENS,
             system_prompt=system_prompt,
             think=enable_thinking,
             tools=tools,
@@ -397,7 +397,7 @@ async def agent_chat_stream(
             async for chunk in provider.astream(
                 fallback_msgs,
                 temperature=0.1,
-                max_tokens=settings.LLM_MAX_OUTPUT_TOKENS,
+                max_tokens=settings.LLM_MAX_TOKENS,
                 system_prompt=system_prompt,
                 think=enable_thinking,
                 tools=None,

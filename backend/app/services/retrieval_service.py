@@ -82,10 +82,11 @@ async def retrieve_documents(
                 document_id=int(c.metadata.get("document_id", 0)),
                 chunk_index=i,
                 page_no=int(c.metadata.get("page_no", 0)),
-                heading_path=str(c.metadata.get("heading_path", "")).split(" > ") if c.metadata.get("heading_path") else [],
+                heading_path=c.metadata.get("heading_path", []) or [],
                 source_file=str(c.metadata.get("source", "")),
                 image_refs=[],
             ))
+        citations = []
 
     # Build sources with citation IDs
     sources: list[ChatSourceChunk] = []
