@@ -12,13 +12,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 async def get_config_status():
     """Return active provider and model names for UI display."""
     llm_provider = settings.LLM_PROVIDER.lower()
-
-    if llm_provider == "ollama":
-        llm_model = settings.OLLAMA_MODEL
-    elif llm_provider == "openai":
-        llm_model = settings.OPENAI_MODEL
-    else:  # gemini
-        llm_model = settings.LLM_MODEL_FAST
+    llm_model = settings.LLM_MODEL
 
     kg_provider = settings.KG_EMBEDDING_PROVIDER.lower()
     kg_model = settings.KG_EMBEDDING_MODEL

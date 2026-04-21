@@ -194,16 +194,10 @@ class KnowledgeGraphService:
             try:
                 all_nodes = await rag.chunk_entity_relation_graph.get_all_nodes()
                 if not all_nodes:
-                    from app.core.config import settings
-                    model = (
-                        settings.OLLAMA_MODEL
-                        if settings.LLM_PROVIDER.lower() == "ollama"
-                        else settings.LLM_MODEL_FAST
-                    )
                     logger.warning(
                         f"KG extraction produced 0 entities for workspace {self.workspace_id}. "
-                        f"Model '{model}' may not support LightRAG's entity extraction format. "
-                        f"Consider using a larger model (e.g. qwen3:14b, gemma3:12b) for KG."
+                        f"Model '{settings.LLM_MODEL}' may not support LightRAG's entity extraction format. "
+                        f"Consider using a larger model for KG."
                     )
             except Exception:
                 pass

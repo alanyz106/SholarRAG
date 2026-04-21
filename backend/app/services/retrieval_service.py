@@ -46,6 +46,7 @@ async def retrieve_documents(
     top_k: int,
     db: AsyncSession,
     existing_ids: Optional[set[str]] = None,
+    document_ids: Optional[list[int]] = None,
 ) -> RetrievalResult:
     """
     Execute hybrid retrieval for a question.
@@ -67,13 +68,14 @@ async def retrieve_documents(
         result = await rag_service.query_deep(
             question=question,
             top_k=min(top_k, 10),
+            document_ids=document_ids,
             mode="hybrid",
             include_images=False,
         )
         chunks = result.chunks
         citations = result.citations
     else:
-        legacy = rag_service.query(question=question, top_k=min(top_k, 10))
+        legacy = rag_service.query(question=question, top_k=min(top_k, 10), document_ids=document_ids)
         for i, c in enumerate(legacy.chunks):
             chunks.append(SimpleNamespace(
                 content=c.content,
