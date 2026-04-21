@@ -20,7 +20,7 @@ from sqlalchemy import select, delete
 
 from app.core.config import settings
 from app.models.document import Document, DocumentImage, DocumentTable, DocumentStatus
-from app.services.deep_document_parser import DeepDocumentParser
+from app.services.deep_document_parser import get_document_parser
 from app.services.knowledge_graph_service import KnowledgeGraphService
 from app.services.deep_retriever import DeepRetriever
 from app.services.embedder import EmbeddingService, get_embedding_service
@@ -54,7 +54,7 @@ class NexusRAGService:
         self.workspace_id = workspace_id
 
         # Services
-        self.parser = DeepDocumentParser(workspace_id=workspace_id)
+        self.parser = get_document_parser(workspace_id=workspace_id)
         self.embedder = get_embedding_service()
         self.vector_store = get_vector_store(workspace_id)
 
