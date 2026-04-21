@@ -2,11 +2,13 @@
 Deep Document Parser
 ====================
 
-Parses documents using Docling for high-fidelity extraction of text, tables,
-and images with structural metadata (page numbers, headings).
+Pluggable document parsing with interface:
+  - DoclingDocumentParser: PDF/DOCX/PPTX/HTML via Docling (default)
+  - Legacy handling for TXT/MD
 
-Supported formats: PDF, DOCX, PPTX, HTML (via Docling)
-Fallback: TXT, MD (via legacy loader)
+Usage:
+    parser = get_document_parser(workspace_id=1)
+    result = parser.parse('/path/to/file.pdf', document_id=1, original_filename='report.pdf')
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ import logging
 import re
 import time
 import uuid
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
 
@@ -42,7 +45,32 @@ _DOCLING_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html"}
 _LEGACY_EXTENSIONS = {".txt", ".md"}
 
 
-class DeepDocumentParser:
+class DocumentParserBase(ABC):
+    """
+    Abstract base class for document parsers.
+
+    Subclasses must implement:
+    - parse(file_path, document_id, original_filename) -> ParsedDocument
+    """
+
+    @abstractmethod
+    def parse(
+        self,
+        file_path: str | Path,
+        document_id: int,
+        original_filename: str,
+    ) -> ParsedDocument:
+        """Parse a document and return structured result."""
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def is_docling_supported(file_path: str | Path) -> bool:
+        """Check if the file format is supported by Docling (PDF/DOCX/PPTX/HTML)."""
+        ...
+
+
+class DoclingDocumentParser(DocumentParserBase):
     """
     Parses documents using Docling for rich structural extraction.
 
@@ -772,3 +800,24 @@ class DeepDocumentParser:
             images=[],
             tables_count=0,
         )
+
+
+def get_document_parser(workspace_id: int) -> DocumentParserBase:
+    """Factory: create a DocumentParser based on DOCUMENT_PARSER_PROVIDER config.
+
+    Default: DoclingDocumentParser (supports PDF, DOCX, PPTX, HTML).
+    Fallback: LegacyDocumentParser for TXT/MD (auto-detected by file extension).
+    """
+    provider = getattr(settings, "DOCUMENT_PARSER_PROVIDER", "docling").lower()
+
+    if provider == "docling":
+        return DoclingDocumentParser(workspace_id=workspace_id)
+
+    raise ValueError(
+        f"DOCUMENT_PARSER_PROVIDER '{provider}' is not supported. "
+        f"Available: docling"
+    )
+
+
+# Backward-compatible alias (deprecated, use get_document_parser)
+DeepDocumentParser = DoclingDocumentParser

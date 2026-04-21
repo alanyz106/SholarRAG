@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     QDRANT_URL: str = Field(default="")
     QDRANT_API_KEY: str = Field(default="")
 
+    # === 文档解析器 ===
+    DOCUMENT_PARSER_PROVIDER: str = "docling"  # docling
+
     # === 嵌入服务 (向量检索) ===
     EMBEDDING_PROVIDER: str = "openai"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
