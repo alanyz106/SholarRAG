@@ -1,23 +1,85 @@
 """
 Vector Store Service
-Handles Qdrant Cloud operations for storing and retrieving document embeddings.
+====================
+Unified interface for vector storage with pluggable backends.
+
+Default backend: Qdrant Cloud (QdrantVectorStore)
+Future backends: ChromaVectorStore, MilvusVectorStore, etc.
 """
 from __future__ import annotations
 
 import logging
 import uuid
-from typing import Sequence, Optional, TYPE_CHECKING
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny
+from abc import ABC, abstractmethod
+from typing import Sequence, Optional
 
 from app.core.config import settings
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
-# Global Qdrant client
+
+class VectorStoreBase(ABC):
+    """
+    Abstract base class for vector store backends.
+    All concrete implementations must provide these methods.
+    """
+
+    @abstractmethod
+    def add_documents(
+        self,
+        ids: Sequence[str],
+        embeddings: Sequence[list[float]],
+        documents: Sequence[str],
+        metadatas: Sequence[dict] | None = None,
+    ) -> None:
+        """Add documents with embeddings to the store."""
+        ...
+
+    @abstractmethod
+    def query(
+        self,
+        query_embedding: list[float],
+        n_results: int = 5,
+        where: dict | None = None,
+        include: list[str] | None = None,
+    ) -> dict:
+        """
+        Query for similar documents.
+
+        Returns dict with keys: ids, documents, metadatas, distances.
+        ChromaDB-style interface (ids→list[str], documents→list[str],
+        metadatas→list[dict], distances→list[float]).
+        """
+        ...
+
+    @abstractmethod
+    def delete_by_document_id(self, document_id: int) -> None:
+        """Delete all chunks belonging to a specific document."""
+        ...
+
+    @abstractmethod
+    def delete_collection(self) -> None:
+        """Delete the entire collection."""
+        ...
+
+    @abstractmethod
+    def count(self) -> int:
+        """Return the number of documents in the collection."""
+        ...
+
+    @abstractmethod
+    def get_by_ids(self, ids: Sequence[str]) -> dict:
+        """Get documents by their IDs. Returns dict with documents and metadatas."""
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Qdrant Backend
+# ---------------------------------------------------------------------------
+
+from qdrant_client import QdrantClient
+from qdrant_client.models import VectorParams, Distance, Filter, FieldCondition, MatchAny
+
 _qdrant_client: Optional[QdrantClient] = None
 
 
@@ -41,9 +103,9 @@ def get_qdrant_client() -> QdrantClient:
     return _qdrant_client
 
 
-class VectorStore:
+class QdrantVectorStore(VectorStoreBase):
     """
-    Vector store service for managing document embeddings in Qdrant.
+    Qdrant Cloud implementation of VectorStoreBase.
     Each knowledge base has its own collection for namespace isolation.
     """
 
@@ -62,7 +124,6 @@ class VectorStore:
 
         client = get_qdrant_client()
 
-        # Check if collection exists
         collections = client.get_collections()
         collection_names = [c.name for c in collections.collections]
 
@@ -77,12 +138,11 @@ class VectorStore:
             )
             logger.info(f"Collection {self.collection_name} created successfully")
 
-            # Create payload index on document_id for efficient filtering
             try:
                 client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name="document_id",
-                    field_schema="integer",  # Payload type for document_id
+                    field_schema="integer",
                 )
                 logger.info(f"Created payload index on document_id for {self.collection_name}")
             except Exception as e:
@@ -106,31 +166,25 @@ class VectorStore:
         ids: Sequence[str],
         embeddings: Sequence[list[float]],
         documents: Sequence[str],
-        metadatas: Sequence[dict] | None = None
+        metadatas: Sequence[dict] | None = None,
     ) -> None:
-        """
-        Add documents with their embeddings to the collection.
-        Auto-handles dimension mismatch: if the collection was created with
-        a different embedding dimension, it is deleted and recreated.
-        """
         if not ids:
             return
 
         self._ensure_collection()
         client = get_qdrant_client()
 
-        # Prepare points
         points = []
         for i, original_id in enumerate(ids):
             payload = {
                 "content": documents[i],
-                "original_id": original_id,  # Store original ID for reference
+                "original_id": original_id,
             }
             if metadatas:
                 payload.update(metadatas[i])
 
             points.append({
-                "id": _str_to_uuid(original_id),  # Convert to UUID for Qdrant
+                "id": _str_to_uuid(original_id),
                 "vector": embeddings[i],
                 "payload": payload,
             })
@@ -162,16 +216,14 @@ class VectorStore:
         query_embedding: list[float],
         n_results: int = 5,
         where: dict | None = None,
-        include: list[str] | None = None
+        include: list[str] | None = None,
     ) -> dict:
-        """Query the collection for similar documents."""
         if include is None:
             include = ["documents", "metadatas", "distances"]
 
         self._ensure_collection()
         client = get_qdrant_client()
 
-        # Build Qdrant filter from ChromaDB-style where clause
         qdrant_filter = None
         if where:
             conditions = []
@@ -180,14 +232,14 @@ class VectorStore:
                     conditions.append(
                         FieldCondition(
                             key=key,
-                            match=MatchAny(any=value["$in"])
+                            match=MatchAny(any=value["$in"]),
                         )
                     )
                 else:
                     conditions.append(
                         FieldCondition(
                             key=key,
-                            match=MatchAny(any=[value])
+                            match=MatchAny(any=[value]),
                         )
                     )
             if conditions:
@@ -212,40 +264,26 @@ class VectorStore:
                 return {"ids": [], "documents": [], "metadatas": [], "distances": []}
             raise
 
-        # Flatten results - Qdrant returns QueryResponse with points list
-        points = results.points if hasattr(results, 'points') else results
-        ids = []
-        documents = []
-        metadatas = []
-        distances = []
+        points = results.points if hasattr(results, "points") else results
+        ids_out, documents_out, metadatas_out, distances_out = [], [], [], []
 
         for point in points:
             payload = point.payload or {}
-
-            # Return original_id if available (stored from add_documents)
-            # Fall back to UUID string if not
-            ids.append(payload.get("original_id", str(point.id)))
-
-            # Content is stored in "content" field
-            documents.append(payload.get("content", ""))
-
-            # Metadata is everything except "content" and "original_id"
+            ids_out.append(payload.get("original_id", str(point.id)))
+            documents_out.append(payload.get("content", ""))
             meta = {k: v for k, v in payload.items() if k not in ("content", "original_id")}
-            metadatas.append(meta)
-
-            # Qdrant returns score (Dot Product), we store as distance
-            score = point.score if hasattr(point, 'score') else 0.0
-            distances.append(score)
+            metadatas_out.append(meta)
+            score = point.score if hasattr(point, "score") else 0.0
+            distances_out.append(score)
 
         return {
-            "ids": ids,
-            "documents": documents,
-            "metadatas": metadatas,
-            "distances": distances,
+            "ids": ids_out,
+            "documents": documents_out,
+            "metadatas": metadatas_out,
+            "distances": distances_out,
         }
 
     def delete_by_document_id(self, document_id: int) -> None:
-        """Delete all chunks belonging to a specific document."""
         self._ensure_collection()
         client = get_qdrant_client()
 
@@ -255,7 +293,7 @@ class VectorStore:
                 must=[
                     FieldCondition(
                         key="document_id",
-                        match=MatchAny(any=[document_id])
+                        match=MatchAny(any=[document_id]),
                     )
                 ]
             ),
@@ -263,7 +301,6 @@ class VectorStore:
         logger.info(f"Deleted chunks for document {document_id} from collection {self.collection_name}")
 
     def delete_collection(self) -> None:
-        """Delete the entire collection for this knowledge base."""
         client = get_qdrant_client()
         try:
             client.delete_collection(collection_name=self.collection_name)
@@ -273,19 +310,16 @@ class VectorStore:
             logger.warning(f"Failed to delete collection {self.collection_name}: {e}")
 
     def count(self) -> int:
-        """Return the number of documents in the collection."""
         self._ensure_collection()
         client = get_qdrant_client()
         result = client.get_collection(collection_name=self.collection_name)
         return result.points_count
 
     def get_by_ids(self, ids: Sequence[str]) -> dict:
-        """Get documents by their IDs."""
         self._ensure_collection()
         client = get_qdrant_client()
 
-        # Convert string IDs to UUIDs for Qdrant
-        qdrant_ids = [_str_to_uuid(id) for id in ids]
+        qdrant_ids = [_str_to_uuid(id_) for id_ in ids]
 
         results = client.retrieve(
             collection_name=self.collection_name,
@@ -294,31 +328,48 @@ class VectorStore:
             with_vectors=False,
         )
 
-        documents = []
-        metadatas = []
+        documents_out = []
+        metadatas_out = []
 
         for point in results:
             payload = point.payload or {}
-            documents.append(payload.get("content", ""))
+            documents_out.append(payload.get("content", ""))
             meta = {k: v for k, v in payload.items() if k not in ("content", "original_id")}
-            metadatas.append(meta)
+            metadatas_out.append(meta)
 
         return {
-            "documents": documents,
-            "metadatas": metadatas,
+            "documents": documents_out,
+            "metadatas": metadatas_out,
         }
 
 
-def get_vector_store(workspace_id: int) -> VectorStore:
-    """Factory function to create a VectorStore for a knowledge base."""
-    return VectorStore(workspace_id)
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+
+def get_vector_store(workspace_id: int) -> VectorStoreBase:
+    """Factory: create a VectorStore instance based on VECTOR_STORE_PROVIDER config.
+
+    Currently only "qdrant" is supported.
+    """
+    provider = getattr(settings, "VECTOR_STORE_PROVIDER", "qdrant").lower()
+
+    if provider == "qdrant":
+        return QdrantVectorStore(workspace_id)
+
+    raise ValueError(
+        f"VECTOR_STORE_PROVIDER '{provider}' is not supported. "
+        f"Available: qdrant"
+    )
 
 
 def _str_to_uuid(str_id: str) -> str:
-    """Convert a string ID to a deterministic UUID for Qdrant.
-
-    Qdrant requires point IDs to be unsigned integers or UUIDs.
-    We use UUID v5 (name-based with namespace) for deterministic mapping.
-    """
-    namespace_uuid = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # URL namespace
+    """Convert a string ID to a deterministic UUID for Qdrant."""
+    namespace_uuid = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
     return str(uuid.uuid5(namespace_uuid, str_id))
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible aliases (deprecated, use get_vector_store + VectorStoreBase)
+# ---------------------------------------------------------------------------
+VectorStore = QdrantVectorStore
