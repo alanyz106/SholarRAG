@@ -4,11 +4,10 @@ Reranker Service
 Cross-encoder reranker for improving retrieval precision.
 
 Supports multiple providers:
-- sentence_transformers (local)
 - gitee_ai (Gitee AI API)
 - siliconflow (SiliconFlow API)
 
-Default provider: RERANKER_PROVIDER from settings (default: sentence_transformers).
+Default provider: RERANKER_PROVIDER from settings (default: gitee_ai).
 
 Usage:
     reranker = get_reranker_service()
@@ -47,60 +46,6 @@ class BaseRerankerProvider(ABC):
     ) -> List[RerankResult]:
         """Rerank documents by relevance to the query."""
         ...
-
-
-class SentenceTransformerRerankerProvider(BaseRerankerProvider):
-    """Local sentence-transformers cross-encoder reranker."""
-
-    def __init__(self, model_name: Optional[str] = None):
-        self.model_name = model_name or settings.NEXUSRAG_RERANKER_MODEL
-        self._model = None
-
-    @property
-    def model(self):
-        """Lazy load the cross-encoder model."""
-        if self._model is None:
-            from sentence_transformers import CrossEncoder
-            logger.info(f"Loading reranker model: {self.model_name}")
-            self._model = CrossEncoder(self.model_name)
-            logger.info(f"Reranker model loaded: {self.model_name}")
-        return self._model
-
-    def rerank(
-        self,
-        query: str,
-        documents: Sequence[str],
-        top_k: Optional[int] = None,
-        min_score: Optional[float] = None,
-    ) -> List[RerankResult]:
-        """Rerank documents using local cross-encoder model."""
-        if not documents:
-            return []
-
-        # Build (query, document) pairs for the cross-encoder
-        pairs = [(query, doc) for doc in documents]
-
-        # Score all pairs in a single batch
-        scores = self.model.predict(pairs, batch_size=32).tolist()
-
-        # Build results with original indices
-        results = [
-            RerankResult(index=i, score=s, text=doc)
-            for i, (s, doc) in enumerate(zip(scores, documents))
-        ]
-
-        # Sort by score descending
-        results.sort(key=lambda r: r.score, reverse=True)
-
-        # Apply min_score filter
-        if min_score is not None:
-            results = [r for r in results if r.score >= min_score]
-
-        # Apply top_k limit
-        if top_k is not None:
-            results = results[:top_k]
-
-        return results
 
 
 class GiteeAIRerankerProvider(BaseRerankerProvider):
@@ -396,18 +341,14 @@ class RerankerService:
         Initialize reranker service with specified provider.
 
         Args:
-            provider: Reranker provider (sentence_transformers, gitee_ai, etc.)
+            provider: Reranker provider (gitee_ai, siliconflow)
                      Defaults to settings.RERANKER_PROVIDER
             model_name: Model name (provider-specific)
             **kwargs: Additional provider-specific arguments (api_token, top_n, etc.)
         """
         self.provider = provider or settings.RERANKER_PROVIDER
 
-        if self.provider == "sentence_transformers":
-            self._provider = SentenceTransformerRerankerProvider(
-                model_name=model_name or settings.NEXUSRAG_RERANKER_MODEL
-            )
-        elif self.provider == "gitee_ai":
+        if self.provider == "gitee_ai":
             self._provider = GiteeAIRerankerProvider(
                 api_token=kwargs.get("api_token") or settings.GITEE_AI_API_TOKEN,
                 model=model_name or settings.GITEE_AI_RERANK_MODEL,
@@ -422,15 +363,8 @@ class RerankerService:
         else:
             raise ValueError(
                 f"Unknown RERANKER_PROVIDER: {self.provider!r}. "
-                f"Supported: sentence_transformers, gitee_ai, cohere, jina, modelscope, siliconflow"
+                f"Supported: gitee_ai, siliconflow"
             )
-
-    @property
-    def model(self):
-        """Get the underlying model (only for sentence_transformers)."""
-        if self.provider == "sentence_transformers":
-            return self._provider.model
-        raise AttributeError(f"model property not available for provider={self.provider}")
 
     def rerank(
         self,
