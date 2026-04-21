@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.document import Document, DocumentImage, DocumentTable
 from app.services.embedder import EmbeddingService
-from app.services.vector_store import VectorStore
+from app.services.vector_store import VectorStoreBase
 from app.services.knowledge_graph_service import KnowledgeGraphService
 from app.services.reranker import RerankerService, get_reranker_service
 from app.services.models.parsed_document import (
@@ -46,7 +46,7 @@ class DeepRetriever:
         self,
         workspace_id: int,
         kg_service: Optional[KnowledgeGraphService],
-        vector_store: VectorStore,
+        vector_store: VectorStoreBase,
         embedder: EmbeddingService,
         db: Optional[AsyncSession] = None,
         reranker: Optional[RerankerService] = None,
